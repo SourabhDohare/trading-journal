@@ -435,32 +435,51 @@ export class TradeFormComponent implements OnInit {
     );
   }
 
-  submit() {
-    this.submitted = true;
-    this.apiError.set('');
+  // Replace the submit() method entirely
+submit() {
+  this.submitted = true;
+  this.apiError.set('');
 
-    if (this.form.invalid) {
-      this.form.markAllAsTouched();
-      return;
-    }
-
-    this.loading.set(true);
-    const payload = { ...this.form.value, tags: this.selectedTags() };
-
-    this.tradeService.createTrade(payload).subscribe({
-      next: (trade) => {
-        this.loading.set(false);
-        this.router.navigate(['/trades', trade.id]);
-      },
-      error: (err) => {
-        this.loading.set(false);
-        const body = err.error;
-        if (body?.details?.length) {
-          this.apiError.set(body.details.join(' | '));
-        } else {
-          this.apiError.set(body?.message || 'An error occurred');
-        }
-      }
-    });
+  if (this.form.invalid) {
+    this.form.markAllAsTouched();
+    // Show which fields are invalid
+    const invalidFields = Object.keys(this.form.controls)
+      .filter(key => this.form.controls[key].invalid);
+    this.apiError.set('Please fill required fields: ' + invalidFields.join(', '));
+    return;
   }
+
+  this.loading.set(true);
+  const payload = { 
+    ...this.form.value, 
+    tags: this.selectedTags(),
+    slRespected: this.form.value.slRespected ?? true
+  };
+
+  console.log('Submitting trade payload:', payload); // debug
+
+  this.tradeService.createTrade(payload).subscribe({
+    next: (trade) => {
+      console.log('Trade saved:', trade);
+      this.loading.set(false);
+      this.router.navigateByUrl('/trades/' + trade.id, { replaceUrl: true });
+    },
+    error: (err) => {
+      this.loading.set(false);
+      console.error('Trade error:', err);
+      const body = err.error;
+      if (body?.fieldErrors) {
+        // Show field-level validation errors from backend
+        const msgs = Object.entries(body.fieldErrors)
+          .map(([f, m]) => `${f}: ${m}`)
+          .join(' | ');
+        this.apiError.set(msgs);
+      } else if (body?.details?.length) {
+        this.apiError.set(body.details.join(' | '));
+      } else {
+        this.apiError.set(body?.message || JSON.stringify(body) || 'Failed to save trade');
+      }
+    }
+  });
+}
 }

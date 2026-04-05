@@ -28,7 +28,9 @@ public class AnalyticsService {
         if (dateFrom != null && dateTo != null) {
             trades = tradeRepository.findByUserIdAndTradeDateBetweenOrderByTradeDateDesc(userId, dateFrom, dateTo);
         } else {
-            trades = tradeRepository.findLastNTrades(userId, PageRequest.of(0, 500));
+            // FIXED: fetch ALL trades for user, no limit
+            trades = tradeRepository.findByUserIdOrderByTradeDateDesc(
+            userId, PageRequest.of(0, 10000)).getContent();
         }
 
         List<Trade> closedTrades = trades.stream()
@@ -72,7 +74,8 @@ public class AnalyticsService {
     // ─── Core Calculations ────────────────────────────────────
 
     private BigDecimal calcWinRate(List<Trade> trades) {
-        if (trades.isEmpty()) return BigDecimal.ZERO;
+        if (trades.isEmpty())
+            return BigDecimal.ZERO;
         long wins = countByOutcome(trades, Trade.OutcomeTag.PROFIT);
         return BigDecimal.valueOf(wins * 100.0 / trades.size()).setScale(2, RoundingMode.HALF_UP);
     }
@@ -88,7 +91,8 @@ public class AnalyticsService {
         List<Trade> filtered = trades.stream()
                 .filter(t -> t.getOutcomeTag() == outcome && t.getPnlAbsolute() != null)
                 .toList();
-        if (filtered.isEmpty()) return BigDecimal.ZERO;
+        if (filtered.isEmpty())
+            return BigDecimal.ZERO;
         BigDecimal total = filtered.stream().map(Trade::getPnlAbsolute).reduce(BigDecimal.ZERO, BigDecimal::add);
         return total.divide(BigDecimal.valueOf(filtered.size()), 2, RoundingMode.HALF_UP);
     }
@@ -104,12 +108,14 @@ public class AnalyticsService {
                 .map(t -> t.getPnlAbsolute().abs())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        if (grossLoss.compareTo(BigDecimal.ZERO) == 0) return grossProfit.compareTo(BigDecimal.ZERO) > 0 ? BigDecimal.valueOf(999) : BigDecimal.ZERO;
+        if (grossLoss.compareTo(BigDecimal.ZERO) == 0)
+            return grossProfit.compareTo(BigDecimal.ZERO) > 0 ? BigDecimal.valueOf(999) : BigDecimal.ZERO;
         return grossProfit.divide(grossLoss, 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calcExpectancy(List<Trade> trades) {
-        if (trades.isEmpty()) return BigDecimal.ZERO;
+        if (trades.isEmpty())
+            return BigDecimal.ZERO;
         BigDecimal winRate = calcWinRate(trades).divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
         BigDecimal lossRate = BigDecimal.ONE.subtract(winRate);
         BigDecimal avgWin = avgPnlByOutcome(trades, Trade.OutcomeTag.PROFIT);
@@ -122,7 +128,8 @@ public class AnalyticsService {
                 .filter(t -> t.getActualRR() != null)
                 .map(Trade::getActualRR)
                 .toList();
-        if (rrs.isEmpty()) return BigDecimal.ZERO;
+        if (rrs.isEmpty())
+            return BigDecimal.ZERO;
         BigDecimal sum = rrs.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         return sum.divide(BigDecimal.valueOf(rrs.size()), 2, RoundingMode.HALF_UP);
     }
@@ -132,13 +139,15 @@ public class AnalyticsService {
                 .filter(t -> t.getPlannedRR() != null)
                 .map(Trade::getPlannedRR)
                 .toList();
-        if (rrs.isEmpty()) return BigDecimal.ZERO;
+        if (rrs.isEmpty())
+            return BigDecimal.ZERO;
         BigDecimal sum = rrs.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         return sum.divide(BigDecimal.valueOf(rrs.size()), 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calcMaxDrawdown(List<Trade> trades) {
-        if (trades.isEmpty()) return BigDecimal.ZERO;
+        if (trades.isEmpty())
+            return BigDecimal.ZERO;
         List<Trade> sorted = trades.stream()
                 .filter(t -> t.getPnlAbsolute() != null)
                 .sorted(Comparator.comparing(Trade::getTradeDate))
@@ -150,9 +159,11 @@ public class AnalyticsService {
 
         for (Trade t : sorted) {
             runningPnl = runningPnl.add(t.getPnlAbsolute());
-            if (runningPnl.compareTo(peak) > 0) peak = runningPnl;
+            if (runningPnl.compareTo(peak) > 0)
+                peak = runningPnl;
             BigDecimal dd = peak.subtract(runningPnl);
-            if (dd.compareTo(maxDD) > 0) maxDD = dd;
+            if (dd.compareTo(maxDD) > 0)
+                maxDD = dd;
         }
         return maxDD;
     }
@@ -160,8 +171,11 @@ public class AnalyticsService {
     private int calcMaxConsecutive(List<Trade> trades, Trade.OutcomeTag outcome) {
         int max = 0, current = 0;
         for (Trade t : trades) {
-            if (t.getOutcomeTag() == outcome) { current++; max = Math.max(max, current); }
-            else current = 0;
+            if (t.getOutcomeTag() == outcome) {
+                current++;
+                max = Math.max(max, current);
+            } else
+                current = 0;
         }
         return max;
     }
@@ -179,7 +193,8 @@ public class AnalyticsService {
     private BigDecimal calcAvgDisciplineScore(List<Trade> trades) {
         List<Integer> scores = trades.stream()
                 .filter(t -> t.getDisciplineScore() != null).map(Trade::getDisciplineScore).toList();
-        if (scores.isEmpty()) return BigDecimal.ZERO;
+        if (scores.isEmpty())
+            return BigDecimal.ZERO;
         return BigDecimal.valueOf(scores.stream().mapToInt(i -> i).average().orElse(0))
                 .setScale(1, RoundingMode.HALF_UP);
     }
@@ -240,21 +255,27 @@ public class AnalyticsService {
         grouped.put("CLOSING_3_330", new ArrayList<>());
 
         for (Trade t : trades) {
-            if (t.getTradeDate() == null) continue;
+            if (t.getTradeDate() == null)
+                continue;
             int hour = t.getTradeDate().getHour();
             int minute = t.getTradeDate().getMinute();
-            if (hour >= 9 && hour < 11) grouped.get("MORNING_9_11").add(t);
-            else if (hour >= 11 && hour < 13) grouped.get("MID_11_1").add(t);
-            else if (hour >= 13 && hour < 15) grouped.get("AFTERNOON_1_3").add(t);
-            else if (hour == 15 && minute <= 30) grouped.get("CLOSING_3_330").add(t);
+            if (hour >= 9 && hour < 11)
+                grouped.get("MORNING_9_11").add(t);
+            else if (hour >= 11 && hour < 13)
+                grouped.get("MID_11_1").add(t);
+            else if (hour >= 13 && hour < 15)
+                grouped.get("AFTERNOON_1_3").add(t);
+            else if (hour == 15 && minute <= 30)
+                grouped.get("CLOSING_3_330").add(t);
         }
 
         Map<String, AnalyticsDTO.TimePerformance> result = new LinkedHashMap<>();
         grouped.forEach((period, ts) -> {
-            if (!ts.isEmpty()) result.put(period, AnalyticsDTO.TimePerformance.builder()
-                    .period(period).count(ts.size()).winRate(calcWinRate(ts))
-                    .avgPnl(sumPnl(ts).divide(BigDecimal.valueOf(ts.size()), 2, RoundingMode.HALF_UP))
-                    .build());
+            if (!ts.isEmpty())
+                result.put(period, AnalyticsDTO.TimePerformance.builder()
+                        .period(period).count(ts.size()).winRate(calcWinRate(ts))
+                        .avgPnl(sumPnl(ts).divide(BigDecimal.valueOf(ts.size()), 2, RoundingMode.HALF_UP))
+                        .build());
         });
         return result;
     }
@@ -274,20 +295,25 @@ public class AnalyticsService {
         List<String> mistakes = new ArrayList<>();
 
         long fomoLosses = trades.stream()
-                .filter(t -> t.getEmotionalState() == Trade.EmotionalState.FOMO && t.getOutcomeTag() == Trade.OutcomeTag.LOSS)
+                .filter(t -> t.getEmotionalState() == Trade.EmotionalState.FOMO
+                        && t.getOutcomeTag() == Trade.OutcomeTag.LOSS)
                 .count();
-        if (fomoLosses >= 3) mistakes.add("FOMO trades lead to losses (" + fomoLosses + " instances) — stop chasing");
+        if (fomoLosses >= 3)
+            mistakes.add("FOMO trades lead to losses (" + fomoLosses + " instances) — stop chasing");
 
         long slBreaches = trades.stream().filter(t -> !t.isSlRespected()).count();
-        if (slBreaches >= 2) mistakes.add("SL not respected in " + slBreaches + " trades — this is a capital destruction pattern");
+        if (slBreaches >= 2)
+            mistakes.add("SL not respected in " + slBreaches + " trades — this is a capital destruction pattern");
 
         long revengeTrades = trades.stream()
                 .filter(t -> t.getEmotionalState() == Trade.EmotionalState.REVENGE).count();
-        if (revengeTrades >= 2) mistakes.add("Revenge trading detected (" + revengeTrades + " trades) — take a break after losses");
+        if (revengeTrades >= 2)
+            mistakes.add("Revenge trading detected (" + revengeTrades + " trades) — take a break after losses");
 
         long earlyExits = trades.stream()
                 .filter(t -> t.getTags() != null && t.getTags().contains("#EarlyExit")).count();
-        if (earlyExits >= 3) mistakes.add("Early exits in " + earlyExits + " trades — you're leaving money on the table");
+        if (earlyExits >= 3)
+            mistakes.add("Early exits in " + earlyExits + " trades — you're leaving money on the table");
 
         return mistakes;
     }
@@ -303,7 +329,8 @@ public class AnalyticsService {
                     return ts.size() >= 3 && wr.compareTo(BigDecimal.valueOf(60)) >= 0;
                 })
                 .sorted((a, b) -> calcWinRate(b.getValue()).compareTo(calcWinRate(a.getValue())))
-                .map(e -> e.getKey().name() + " (" + Math.round(calcWinRate(e.getValue()).doubleValue()) + "% win rate, " + e.getValue().size() + " trades)")
+                .map(e -> e.getKey().name() + " (" + Math.round(calcWinRate(e.getValue()).doubleValue())
+                        + "% win rate, " + e.getValue().size() + " trades)")
                 .limit(3)
                 .collect(Collectors.toList());
     }
@@ -316,7 +343,8 @@ public class AnalyticsService {
 
         byEmotion.entrySet().stream()
                 .filter(e -> e.getValue().size() >= 2)
-                .forEach(e -> behaviors.add("Trading while " + e.getKey().name() + " caused " + e.getValue().size() + " losses"));
+                .forEach(e -> behaviors
+                        .add("Trading while " + e.getKey().name() + " caused " + e.getValue().size() + " losses"));
 
         return behaviors;
     }
@@ -329,7 +357,8 @@ public class AnalyticsService {
             recs.add("Win rate below 40% — focus on setup quality over quantity, take only A-grade setups");
         }
         if (calcAvgRR(trades).compareTo(BigDecimal.valueOf(1)) < 0) {
-            recs.add("Average R:R below 1:1 — you're risking more than you make. Revisit your targets or cut losses earlier");
+            recs.add(
+                    "Average R:R below 1:1 — you're risking more than you make. Revisit your targets or cut losses earlier");
         }
         long slBreaches = trades.stream().filter(t -> !t.isSlRespected()).count();
         if (slBreaches > 0) {
@@ -339,7 +368,8 @@ public class AnalyticsService {
     }
 
     private int calcDisciplineRating(List<Trade> trades) {
-        if (trades.isEmpty()) return 0;
+        if (trades.isEmpty())
+            return 0;
         int score = 100;
         long slBreaches = trades.stream().filter(t -> !t.isSlRespected()).count();
         score -= (int) (slBreaches * 10);
@@ -350,10 +380,14 @@ public class AnalyticsService {
 
     private String calcDisciplineGrade(List<Trade> trades) {
         int rating = calcDisciplineRating(trades);
-        if (rating >= 90) return "A";
-        if (rating >= 75) return "B";
-        if (rating >= 60) return "C";
-        if (rating >= 40) return "D";
+        if (rating >= 90)
+            return "A";
+        if (rating >= 75)
+            return "B";
+        if (rating >= 60)
+            return "C";
+        if (rating >= 40)
+            return "D";
         return "F";
     }
 

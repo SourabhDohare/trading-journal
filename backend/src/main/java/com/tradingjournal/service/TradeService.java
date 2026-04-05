@@ -65,17 +65,26 @@ public class TradeService {
             recalculatePnl(trade);
         }
 
-        if (request.getOutcomeTag() != null) trade.setOutcomeTag(request.getOutcomeTag());
-        if (request.getPnlAbsolute() != null) trade.setPnlAbsolute(request.getPnlAbsolute());
-        if (request.getPnlPercent() != null) trade.setPnlPercent(request.getPnlPercent());
+        if (request.getOutcomeTag() != null)
+            trade.setOutcomeTag(request.getOutcomeTag());
+        if (request.getPnlAbsolute() != null)
+            trade.setPnlAbsolute(request.getPnlAbsolute());
+        if (request.getPnlPercent() != null)
+            trade.setPnlPercent(request.getPnlPercent());
 
         // Post-trade reflection — enforce if set
-        if (request.getWhatWentRight() != null) trade.setWhatWentRight(request.getWhatWentRight());
-        if (request.getWhatWentWrong() != null) trade.setWhatWentWrong(request.getWhatWentWrong());
-        if (request.getWillRepeat() != null) trade.setWillRepeat(request.getWillRepeat());
-        if (request.getWillAvoid() != null) trade.setWillAvoid(request.getWillAvoid());
-        if (request.getDisciplineScore() != null) trade.setDisciplineScore(request.getDisciplineScore());
-        if (request.getNotes() != null) trade.setNotes(request.getNotes());
+        if (request.getWhatWentRight() != null)
+            trade.setWhatWentRight(request.getWhatWentRight());
+        if (request.getWhatWentWrong() != null)
+            trade.setWhatWentWrong(request.getWhatWentWrong());
+        if (request.getWillRepeat() != null)
+            trade.setWillRepeat(request.getWillRepeat());
+        if (request.getWillAvoid() != null)
+            trade.setWillAvoid(request.getWillAvoid());
+        if (request.getDisciplineScore() != null)
+            trade.setDisciplineScore(request.getDisciplineScore());
+        if (request.getNotes() != null)
+            trade.setNotes(request.getNotes());
 
         trade.setSlRespected(request.isSlRespected());
         trade.setReviewed(request.isReviewed());
@@ -83,7 +92,8 @@ public class TradeService {
         if (request.getTags() != null) {
             List<String> tags = new ArrayList<>(request.getTags());
             // Auto-tag based on reflection
-            if (!request.isSlRespected()) tags.add("#DisciplineBreak");
+            if (!request.isSlRespected())
+                tags.add("#DisciplineBreak");
             trade.setTags(tags);
         }
 
@@ -203,30 +213,42 @@ public class TradeService {
         if (req.getEntryPrice() != null && req.getStopLoss() != null && req.getPositionSize() != null) {
             BigDecimal riskPerShare = req.getEntryPrice().subtract(req.getStopLoss()).abs();
             int lots = req.getLotSize() != null ? req.getLotSize() : 1;
-            trade.setRiskPerTradeAbsolute(riskPerShare.multiply(BigDecimal.valueOf((long) req.getPositionSize() * lots)));
+            trade.setRiskPerTradeAbsolute(
+                    riskPerShare.multiply(BigDecimal.valueOf((long) req.getPositionSize() * lots)));
         }
     }
 
     private void recalculatePnl(Trade trade) {
-        if (trade.getExitPrice() == null || trade.getEntryPrice() == null) return;
+        if (trade.getExitPrice() == null || trade.getEntryPrice() == null)
+            return;
 
         BigDecimal priceDiff = trade.getDirection() == Trade.Direction.BUY
                 ? trade.getExitPrice().subtract(trade.getEntryPrice())
                 : trade.getEntryPrice().subtract(trade.getExitPrice());
 
-        int lots = trade.getLotSize() != null ? trade.getLotSize() : 1;
-        BigDecimal grossPnl = priceDiff.multiply(BigDecimal.valueOf((long) trade.getPositionSize() * lots));
+        // FIXED: only multiply by lotSize for F&O, otherwise lotSize = 1
+        int lotSize = 1;
+        if (trade.getLotSize() != null && trade.getLotSize() > 0
+                && (trade.getInstrumentType() == Trade.InstrumentType.FO_FUTURES
+                        || trade.getInstrumentType() == Trade.InstrumentType.FO_OPTIONS)) {
+            lotSize = trade.getLotSize();
+        }
+
+        BigDecimal grossPnl = priceDiff.multiply(
+                BigDecimal.valueOf((long) trade.getPositionSize() * lotSize));
 
         // Deduct costs
         BigDecimal costs = BigDecimal.ZERO;
-        if (trade.getBrokerage() != null) costs = costs.add(trade.getBrokerage());
-        if (trade.getTaxes() != null) costs = costs.add(trade.getTaxes());
+        if (trade.getBrokerage() != null)
+            costs = costs.add(trade.getBrokerage());
+        if (trade.getTaxes() != null)
+            costs = costs.add(trade.getTaxes());
 
         trade.setPnlAbsolute(grossPnl.subtract(costs));
         trade.setPnlPercent(priceDiff.divide(trade.getEntryPrice(), 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100)));
 
-        // Set outcome
+        // Set outcome tag
         if (trade.getPnlAbsolute().compareTo(BigDecimal.ZERO) > 0) {
             trade.setOutcomeTag(Trade.OutcomeTag.PROFIT);
         } else if (trade.getPnlAbsolute().compareTo(BigDecimal.ZERO) < 0) {
@@ -239,8 +261,7 @@ public class TradeService {
         if (trade.getStopLoss() != null) {
             BigDecimal risk = trade.getEntryPrice().subtract(trade.getStopLoss()).abs();
             if (risk.compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal actualMove = priceDiff;
-                trade.setActualRR(actualMove.divide(risk, 2, RoundingMode.HALF_UP));
+                trade.setActualRR(priceDiff.divide(risk, 2, RoundingMode.HALF_UP));
             }
         }
     }
@@ -249,8 +270,10 @@ public class TradeService {
         List<String> tags = trade.getTags() != null ? new ArrayList<>(trade.getTags()) : new ArrayList<>();
 
         // Auto-tag based on emotional state
-        if (trade.getEmotionalState() == Trade.EmotionalState.FOMO) tags.add("#FOMO");
-        if (trade.getEmotionalState() == Trade.EmotionalState.REVENGE) tags.add("#Revenge");
+        if (trade.getEmotionalState() == Trade.EmotionalState.FOMO)
+            tags.add("#FOMO");
+        if (trade.getEmotionalState() == Trade.EmotionalState.REVENGE)
+            tags.add("#Revenge");
 
         // Auto-tag based on R:R
         if (trade.getPlannedRR() != null && trade.getPlannedRR().compareTo(BigDecimal.valueOf(2)) >= 0) {
@@ -268,8 +291,10 @@ public class TradeService {
     private void validateStrictMode(TradeDTO.CreateRequest req) {
         List<String> issues = new ArrayList<>();
 
-        if (req.getStopLoss() == null) issues.add("Stop Loss is mandatory in Strict Mode");
-        if (req.getTarget() == null) issues.add("Target is mandatory in Strict Mode");
+        if (req.getStopLoss() == null)
+            issues.add("Stop Loss is mandatory in Strict Mode");
+        if (req.getTarget() == null)
+            issues.add("Target is mandatory in Strict Mode");
         if (req.getWhyTookTrade() == null || req.getWhyTookTrade().length() < 30) {
             issues.add("Trade reason must be at least 30 characters — be specific");
         }

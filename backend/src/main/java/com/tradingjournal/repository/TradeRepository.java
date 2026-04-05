@@ -38,8 +38,8 @@ public interface TradeRepository extends MongoRepository<Trade, String> {
     @Query("{'userId': ?0, 'setupType': ?1}")
     List<Trade> findByUserIdAndSetupType(String userId, Trade.SetupType setupType);
 
-    @Query(value = "{'userId': ?0}", sort = "{'tradeDate': -1}")
-    List<Trade> findLastNTrades(String userId, Pageable pageable);
+    // @Query(value = "{'userId': ?0}", sort = "{'tradeDate': -1}")
+    // List<Trade> findLastNTrades(String userId, Pageable pageable);
 
     long countByUserIdAndOutcomeTag(String userId, Trade.OutcomeTag outcomeTag);
 
