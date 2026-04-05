@@ -11,7 +11,7 @@ spring:
       # mongodb+srv://foodyuser:<db_password>@foodyzone-cluster.gdvp3o5.mongodb.net/?appName=foodyzone-cluster
       uri: ${MONGODB_URI:mongodb+srv://foodyuser:Sourabh2001@foodyzone-cluster.gdvp3o5.mongodb.net/trading_journal?appName=foodyzone-cluster}
       database: trading_journal
-      auto-index-creation: true
+      auto-index-creation: false
 
   servlet:
     multipart:
