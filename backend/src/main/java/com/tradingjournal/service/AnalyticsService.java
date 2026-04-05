@@ -37,9 +37,9 @@ public class AnalyticsService {
 
         return AnalyticsDTO.builder()
                 .totalTrades(closedTrades.size())
-                .winningTrades(countByOutcome(closedTrades, Trade.OutcomeTag.PROFIT))
-                .losingTrades(countByOutcome(closedTrades, Trade.OutcomeTag.LOSS))
-                .breakevenTrades(countByOutcome(closedTrades, Trade.OutcomeTag.BREAKEVEN))
+                .winningTrades((int) countByOutcome(closedTrades, Trade.OutcomeTag.PROFIT))
+                .losingTrades((int) countByOutcome(closedTrades, Trade.OutcomeTag.LOSS))
+                .breakevenTrades((int) countByOutcome(closedTrades, Trade.OutcomeTag.BREAKEVEN))
                 .winRate(calcWinRate(closedTrades))
                 .totalPnl(sumPnl(closedTrades))
                 .avgProfitPerWin(avgPnlByOutcome(closedTrades, Trade.OutcomeTag.PROFIT))
