@@ -4,6 +4,7 @@ import com.tradingjournal.security.JwtAuthFilter;
 import com.tradingjournal.security.UserPrincipal;
 import com.tradingjournal.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Lazy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,14 +31,20 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@RequiredArgsConstructor
 public class SecurityConfig {
 
-    private final JwtAuthFilter jwtAuthFilter;
     private final UserRepository userRepository;
+    private final JwtAuthFilter jwtAuthFilter;
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
+
+    // @Lazy on JwtAuthFilter breaks the circular dependency
+    public SecurityConfig(UserRepository userRepository,
+                          @Lazy JwtAuthFilter jwtAuthFilter) {
+        this.userRepository = userRepository;
+        this.jwtAuthFilter = jwtAuthFilter;
+    }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -56,12 +63,9 @@ public class SecurityConfig {
 
     @Bean
     public UserDetailsService userDetailsService() {
-        return username -> {
-            // username here is actually userId (from JWT subject)
-            return userRepository.findById(username)
-                    .map(UserPrincipal::from)
-                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
-        };
+        return username -> userRepository.findById(username)
+                .map(UserPrincipal::from)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
     }
 
     @Bean
