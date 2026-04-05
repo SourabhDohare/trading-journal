@@ -39,8 +39,9 @@ app:
     refresh-expiration: 604800000  # 7 days
 
   cors:
-    # allowed-origins: ${ALLOWED_ORIGINS:http://localhost:4200,http://localhost:3000}
-    allowed-origins: ${ALLOWED_ORIGINS:*}
+    # allowed-origins: ${ALLOWED_ORIGINS:https://localhost:4200,http://localhost:3000}
+    # vercel link
+    allowed-origins: ${ALLOWED_ORIGINS:https://trading-journal-plum-gamma.vercel.app}
 
   upload:
     dir: ${UPLOAD_DIR:./uploads}
