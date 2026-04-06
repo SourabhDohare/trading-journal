@@ -253,21 +253,16 @@ public class TradeService {
                 ? trade.getExitPrice().subtract(trade.getEntryPrice())
                 : trade.getEntryPrice().subtract(trade.getExitPrice());
 
-        // lotSize only applies to F&O instruments
-        // For STOCK, CRYPTO, INDEX, FOREX, COMMODITY — lotSize is ignored
         boolean isFnO = trade.getInstrumentType() == Trade.InstrumentType.FO_FUTURES
                 || trade.getInstrumentType() == Trade.InstrumentType.FO_OPTIONS;
-
         int effectiveLotSize = (isFnO && trade.getLotSize() != null && trade.getLotSize() > 0)
                 ? trade.getLotSize()
                 : 1;
 
         BigDecimal totalQuantity = BigDecimal.valueOf(
                 (long) trade.getPositionSize() * effectiveLotSize);
-
         BigDecimal grossPnl = priceDiff.multiply(totalQuantity);
 
-        // Deduct transaction costs
         BigDecimal costs = BigDecimal.ZERO;
         if (trade.getBrokerage() != null)
             costs = costs.add(trade.getBrokerage());
@@ -278,16 +273,16 @@ public class TradeService {
         trade.setPnlPercent(priceDiff.divide(trade.getEntryPrice(), 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100)));
 
-        // Auto-set outcome tag
-        if (trade.getPnlAbsolute().compareTo(BigDecimal.ZERO) > 0) {
+        // Set outcome based on FINAL PnL (after costs), not just price movement
+        int cmp = trade.getPnlAbsolute().compareTo(BigDecimal.ZERO);
+        if (cmp > 0) {
             trade.setOutcomeTag(Trade.OutcomeTag.PROFIT);
-        } else if (trade.getPnlAbsolute().compareTo(BigDecimal.ZERO) < 0) {
-            trade.setOutcomeTag(Trade.OutcomeTag.LOSS);
+        } else if (cmp < 0) {
+            trade.setOutcomeTag(Trade.OutcomeTag.LOSS); // ← catches BREAKEVEN+brokerage = LOSS
         } else {
             trade.setOutcomeTag(Trade.OutcomeTag.BREAKEVEN);
         }
 
-        // Actual R:R
         if (trade.getStopLoss() != null) {
             BigDecimal risk = trade.getEntryPrice().subtract(trade.getStopLoss()).abs();
             if (risk.compareTo(BigDecimal.ZERO) > 0) {

@@ -23,6 +23,7 @@ public class AnalyticsService {
     private final TradeRepository tradeRepository;
 
     @Cacheable(value = "analytics", key = "#userId + '-' + #dateFrom + '-' + #dateTo")
+    // REPLACE the entire getAnalytics() method
     public AnalyticsDTO getAnalytics(String userId, LocalDateTime dateFrom, LocalDateTime dateTo) {
         List<Trade> trades;
 
@@ -34,9 +35,8 @@ public class AnalyticsService {
                     userId, PageRequest.of(0, 10000)).getContent();
         }
 
-        // FIXED: include ALL trades that are either:
-        // 1. Have a non-OPEN, non-NO_TRADE outcome tag, OR
-        // 2. Have a PnL value set (even if outcomeTag wasn't updated)
+        // Include ALL trades that are closed — PROFIT, LOSS, or BREAKEVEN
+        // Also include trades with PnL set even if tag wasn't updated
         Set<String> seenIds = new HashSet<>();
         List<Trade> analyticsBase = new ArrayList<>();
 
@@ -46,16 +46,15 @@ public class AnalyticsService {
             if (seenIds.contains(t.getId()))
                 continue;
 
-            // REPLACE the hasPnl check in getAnalytics()
-            boolean hasPnl = t.getPnlAbsolute() != null
-                    && t.getPnlAbsolute().compareTo(BigDecimal.ZERO) != 0;
-
             boolean isClosed = t.getOutcomeTag() != null
                     && t.getOutcomeTag() != Trade.OutcomeTag.OPEN
                     && t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE;
 
-            // Include trade if EITHER condition is true
-            if (hasPnl || isClosed) {
+            boolean hasPnl = t.getPnlAbsolute() != null
+                    && t.getPnlAbsolute().compareTo(BigDecimal.ZERO) != 0;
+
+            // Include if closed OR has any PnL (covers BREAKEVEN with brokerage costs)
+            if (isClosed || hasPnl) {
                 analyticsBase.add(t);
                 seenIds.add(t.getId());
             }
@@ -100,8 +99,16 @@ public class AnalyticsService {
     private BigDecimal calcWinRate(List<Trade> trades) {
         if (trades.isEmpty())
             return BigDecimal.ZERO;
+        // Only count trades with a defined outcome for win rate calculation
+        long decidedTrades = trades.stream()
+                .filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.PROFIT
+                        || t.getOutcomeTag() == Trade.OutcomeTag.LOSS
+                        || t.getOutcomeTag() == Trade.OutcomeTag.BREAKEVEN)
+                .count();
+        if (decidedTrades == 0)
+            return BigDecimal.ZERO;
         long wins = countByOutcome(trades, Trade.OutcomeTag.PROFIT);
-        return BigDecimal.valueOf(wins * 100.0 / trades.size()).setScale(2, RoundingMode.HALF_UP);
+        return BigDecimal.valueOf(wins * 100.0 / decidedTrades).setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal sumPnl(List<Trade> trades) {
