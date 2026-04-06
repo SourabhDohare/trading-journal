@@ -25,30 +25,41 @@ public class AnalyticsService {
     @Cacheable(value = "analytics", key = "#userId + '-' + #dateFrom + '-' + #dateTo")
     public AnalyticsDTO getAnalytics(String userId, LocalDateTime dateFrom, LocalDateTime dateTo) {
         List<Trade> trades;
+
         if (dateFrom != null && dateTo != null) {
-            trades = tradeRepository.findByUserIdAndTradeDateBetweenOrderByTradeDateDesc(userId, dateFrom, dateTo);
+            trades = tradeRepository.findByUserIdAndTradeDateBetweenOrderByTradeDateDesc(
+                    userId, dateFrom, dateTo);
         } else {
-            // FIXED: fetch ALL trades for user, no limit
             trades = tradeRepository.findByUserIdOrderByTradeDateDesc(
                     userId, PageRequest.of(0, 10000)).getContent();
         }
 
-        // FIXED: include any trade that has a PnL value OR is not OPEN
-        List<Trade> closedTrades = trades.stream()
-                .filter(t -> t.getOutcomeTag() != null
-                        && t.getOutcomeTag() != Trade.OutcomeTag.OPEN
-                        && t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE)
-                .toList();
-        // Also include trades with PnL even if outcomeTag wasn't updated
-        List<Trade> tradesWithPnl = trades.stream()
-                .filter(t -> t.getPnlAbsolute() != null
-                        && t.getPnlAbsolute().compareTo(BigDecimal.ZERO) != 0)
-                .toList();
+        // FIXED: include ALL trades that are either:
+        // 1. Have a non-OPEN, non-NO_TRADE outcome tag, OR
+        // 2. Have a PnL value set (even if outcomeTag wasn't updated)
+        Set<String> seenIds = new HashSet<>();
+        List<Trade> analyticsBase = new ArrayList<>();
 
-        // Use whichever list is larger
-        List<Trade> analyticsBase = closedTrades.size() >= tradesWithPnl.size()
-                ? closedTrades
-                : tradesWithPnl;
+        for (Trade t : trades) {
+            if (t.getId() == null)
+                continue;
+            if (seenIds.contains(t.getId()))
+                continue;
+
+            // REPLACE the hasPnl check in getAnalytics()
+            boolean hasPnl = t.getPnlAbsolute() != null
+                    && t.getPnlAbsolute().compareTo(BigDecimal.ZERO) != 0;
+
+            boolean isClosed = t.getOutcomeTag() != null
+                    && t.getOutcomeTag() != Trade.OutcomeTag.OPEN
+                    && t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE;
+
+            // Include trade if EITHER condition is true
+            if (hasPnl || isClosed) {
+                analyticsBase.add(t);
+                seenIds.add(t.getId());
+            }
+        }
 
         return AnalyticsDTO.builder()
                 .totalTrades(analyticsBase.size())
