@@ -1,5 +1,47 @@
 // src/app/shared/models/analytics.model.ts
 
+export interface TimeFrameStat {
+  timeFrame: string;
+  trades: number;
+  winRate: number;
+  avgPnl: number;
+  totalPnl: number;
+}
+
+export interface SetupPerformance {
+  setup: string;
+  trades: number;
+  winRate: number;
+  avgPnl: number;
+  totalPnl: number;
+}
+
+export interface EmotionPerformance {
+  state: string;
+  trades: number;
+  winRate: number;
+  avgPnl: number;
+}
+
+export interface InstrumentPerformance {
+  instrument: string;
+  trades: number;
+  winRate: number;
+  totalPnl: number;
+}
+
+export interface TimePerformance {
+  period: string;
+  trades: number;
+  winRate: number;
+  avgPnl: number;
+}
+
+export interface MonthlyPnl {
+  month: string;
+  pnl: number;
+}
+
 export interface Analytics {
   totalTrades: number;
   winningTrades: number;
@@ -11,23 +53,21 @@ export interface Analytics {
   avgLossPerLoss: number;
   profitFactor: number;
   expectancy: number;
-  avgRR: number;
-  avgPlannedRR: number;
   avgActualRR: number;
+  avgPlannedRR: number;
   maxDrawdown: number;
-  maxDrawdownPercent: number;
   maxConsecutiveLosses: number;
   maxConsecutiveWins: number;
   bestTrade: number;
   worstTrade: number;
-  largestWin: number;
-  largestLoss: number;
   avgDisciplineScore: number;
-  setupPerformance: Record<string, SetupPerformance>;
-  emotionPerformance: Record<string, EmotionPerformance>;
-  instrumentPerformance: Record<string, InstrumentPerformance>;
-  timePerformance: Record<string, TimePerformance>;
-  monthlyPnl: Record<string, number>;
+  setupPerformance: SetupPerformance[];
+  emotionPerformance: EmotionPerformance[];
+  instrumentPerformance: InstrumentPerformance[];
+  timePerformance: TimePerformance[];
+  timeFrameUsage: Record<string, number>; // NEW
+  timeFramePerformance: TimeFrameStat[]; // NEW
+  monthlyPnl: MonthlyPnl[];
   repeatingMistakes: string[];
   bestSetups: string[];
   worstBehaviors: string[];
@@ -35,35 +75,4 @@ export interface Analytics {
   disciplineRating: number;
   disciplineGrade: string;
   disciplineBreaks: string[];
-}
-
-export interface SetupPerformance {
-  setupType: string;
-  count: number;
-  winRate: number;
-  avgPnl: number;
-  avgRR: number;
-  totalPnl: number;
-}
-
-export interface EmotionPerformance {
-  emotionalState: string;
-  count: number;
-  winRate: number;
-  avgPnl: number;
-}
-
-export interface InstrumentPerformance {
-  instrument: string;
-  count: number;
-  winRate: number;
-  totalPnl: number;
-  avgPnl: number;
-}
-
-export interface TimePerformance {
-  period: string;
-  count: number;
-  winRate: number;
-  avgPnl: number;
 }

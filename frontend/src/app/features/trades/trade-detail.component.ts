@@ -9,307 +9,420 @@ import { Trade } from "../../shared/models/trade.model";
 @Component({
   selector: "app-trade-detail",
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule, DecimalPipe],
+  imports: [CommonModule, DecimalPipe, RouterLink, FormsModule],
   template: `
-    <div class="page" *ngIf="trade()">
-      <div class="page-header">
+    <div class="page" *ngIf="trade(); else loading">
+      <!-- Header -->
+      <div class="trade-header">
         <a routerLink="/trades" class="back-link">← Back to Journal</a>
-        <div class="header-top">
-          <div>
-            <h1 class="page-title">
-              {{ trade()!.instrument }}
-              <span
-                class="dir-badge"
-                [class.buy]="trade()!.direction === 'BUY'"
-                [class.sell]="trade()!.direction === 'SELL'"
-              >
-                {{ trade()!.direction }}
-              </span>
-            </h1>
-            <p class="trade-id-text">
-              {{ trade()!.tradeId }} ·
-              {{ trade()!.tradeDate | date: "MMM d, y HH:mm" }}
-            </p>
+        <div class="header-main">
+          <div class="header-left">
+            <h1 class="trade-instrument">{{ trade()!.instrument }}</h1>
+            <span
+              class="dir-badge"
+              [class.buy]="trade()!.direction === 'BUY'"
+              [class.sell]="trade()!.direction === 'SELL'"
+            >
+              {{ trade()!.direction }}
+            </span>
+            <span class="reviewed-badge" *ngIf="trade()!.isReviewed"
+              >✓ Reviewed</span
+            >
           </div>
-          <div
-            class="pnl-hero"
-            [class.positive]="(trade()!.pnlAbsolute || 0) >= 0"
-            [class.negative]="(trade()!.pnlAbsolute || 0) < 0"
-            *ngIf="trade()!.pnlAbsolute != null"
-          >
-            <span class="pnl-amount"
-              >{{ (trade()!.pnlAbsolute || 0) >= 0 ? "+" : "" }}₹{{
+          <div class="header-right">
+            <div
+              class="pnl-display"
+              *ngIf="trade()!.pnlAbsolute != null"
+              [class.pnl-pos]="trade()!.pnlAbsolute! >= 0"
+              [class.pnl-neg]="trade()!.pnlAbsolute! < 0"
+            >
+              {{ trade()!.pnlAbsolute! >= 0 ? "+" : "" }}₹{{
                 trade()!.pnlAbsolute | number: "1.0-0"
-              }}</span
-            >
-            <span class="pnl-pct"
-              >{{ (trade()!.pnlPercent || 0) >= 0 ? "+" : ""
-              }}{{ trade()!.pnlPercent | number: "1.2-2" }}%</span
-            >
+              }}
+            </div>
+            <div class="pnl-pct" *ngIf="trade()!.pnlPercent">
+              {{ trade()!.pnlPercent! >= 0 ? "+" : ""
+              }}{{ trade()!.pnlPercent | number: "1.2-2" }}%
+            </div>
           </div>
+        </div>
+        <div class="header-meta">
+          <span class="meta-id">{{ trade()!.tradeId }}</span>
+          <span class="meta-dot">·</span>
+          <span>{{ trade()!.tradeDate | date: "MMM d, yyyy HH:mm" }}</span>
+          <span class="meta-dot">·</span>
+          <span
+            class="status-pill"
+            [ngClass]="trade()!.outcomeTag?.toLowerCase()"
+            >{{ trade()!.outcomeTag }}</span
+          >
         </div>
       </div>
 
+      <!-- Body Grid -->
       <div class="detail-grid">
-        <!-- Trade Data -->
+        <!-- LEFT: Trade Data -->
         <div class="card">
           <h3 class="card-title">Trade Data</h3>
-          <div class="data-grid">
+          <div class="data-rows">
             <div class="data-row">
-              <span class="dl">Type</span
-              ><span class="dv"
+              <span class="dl">Type</span>
+              <span class="dv"
                 >{{ trade()!.tradeType }} · {{ trade()!.instrumentType }}</span
               >
             </div>
             <div class="data-row">
-              <span class="dl">Entry</span
-              ><span class="dv"
+              <span class="dl">Entry</span>
+              <span class="dv"
                 >₹{{ trade()!.entryPrice | number: "1.2-2" }}</span
               >
             </div>
             <div class="data-row">
-              <span class="dl">Exit</span
-              ><span class="dv">{{
-                trade()!.exitPrice
-                  ? "₹" + (trade()!.exitPrice | number: "1.2-2")
-                  : "Open"
-              }}</span>
+              <span class="dl">Exit</span>
+              <span class="dv" [class.open-val]="!trade()!.exitPrice">
+                {{
+                  trade()!.exitPrice
+                    ? "₹" + (trade()!.exitPrice | number: "1.2-2")
+                    : "Open"
+                }}
+              </span>
             </div>
             <div class="data-row">
-              <span class="dl">Stop Loss</span
-              ><span class="dv sl"
+              <span class="dl">Stop Loss</span>
+              <span class="dv sl-val"
                 >₹{{ trade()!.stopLoss | number: "1.2-2" }}</span
               >
             </div>
             <div class="data-row">
-              <span class="dl">Target</span
-              ><span class="dv">₹{{ trade()!.target | number: "1.2-2" }}</span>
+              <span class="dl">Target</span>
+              <span class="dv">₹{{ trade()!.target | number: "1.2-2" }}</span>
             </div>
             <div class="data-row">
-              <span class="dl">Size</span
-              ><span class="dv"
-                >{{ trade()!.positionSize
-                }}{{
-                  trade()!.lotSize ? " × lot " + trade()!.lotSize : ""
-                }}</span
-              >
+              <span class="dl">Size</span>
+              <span class="dv"
+                >{{ trade()!.positionSize }}
+                <span *ngIf="trade()!.lotSize" class="sub-val"
+                  >× lot {{ trade()!.lotSize }}</span
+                >
+              </span>
             </div>
             <div class="data-row">
-              <span class="dl">Planned R:R</span
-              ><span class="dv"
-                >1:{{ trade()!.plannedRR | number: "1.2-2" }}</span
-              >
+              <span class="dl">Planned R:R</span>
+              <span class="dv">{{
+                trade()!.plannedRR
+                  ? "1:" + (trade()!.plannedRR | number: "1.2-2")
+                  : "—"
+              }}</span>
             </div>
             <div class="data-row">
               <span class="dl">Actual R:R</span>
               <span
                 class="dv"
-                [class.positive]="(trade()!.actualRR || 0) >= 1"
-                [class.negative]="(trade()!.actualRR || 0) < 1"
+                [class.rr-good]="(trade()!.actualRR || 0) >= 1"
+                [class.rr-bad]="
+                  (trade()!.actualRR || 0) < 1 && trade()!.actualRR
+                "
               >
                 {{
                   trade()!.actualRR
-                    ? "1:" + (trade()!.actualRR | number: "1.2-2")
+                    ? (trade()!.actualRR | number: "1.2-2")
                     : "—"
                 }}
               </span>
             </div>
-            <div class="data-row">
-              <span class="dl">Setup</span
-              ><span class="dv">{{ trade()!.setupType }}</span>
+            <div class="data-row" *ngIf="trade()!.brokerage || trade()!.taxes">
+              <span class="dl">Costs</span>
+              <span class="dv neg-val">
+                ₹{{
+                  (trade()!.brokerage || 0) + (trade()!.taxes || 0)
+                    | number: "1.2-2"
+                }}
+              </span>
             </div>
             <div class="data-row">
-              <span class="dl">Market</span
-              ><span class="dv">{{ trade()!.marketContext }}</span>
+              <span class="dl">Setup</span>
+              <span class="dv setup-val">{{ trade()!.setupType }}</span>
+            </div>
+            <div class="data-row">
+              <span class="dl">Market</span>
+              <span class="dv">{{ trade()!.marketContext }}</span>
+            </div>
+            <div class="data-row">
+              <span class="dl">Exchange</span>
+              <span class="dv">{{ trade()!.exchange || "—" }}</span>
             </div>
             <div class="data-row">
               <span class="dl">SL Respected</span>
               <span
                 class="dv"
-                [class.positive]="trade()!.slRespected"
-                [class.negative]="!trade()!.slRespected"
+                [class.pos-val]="trade()!.slRespected"
+                [class.neg-val]="!trade()!.slRespected"
               >
-                {{ trade()!.slRespected ? "✓ Yes" : "✖ No — #DisciplineBreak" }}
+                {{ trade()!.slRespected ? "✓ Yes" : "✗ No — #DisciplineBreak" }}
               </span>
             </div>
             <div class="data-row">
-              <span class="dl">Status</span
-              ><span
-                class="status-badge"
-                [class]="trade()!.outcomeTag.toLowerCase()"
+              <span class="dl">Status</span>
+              <span
+                class="status-pill"
+                [ngClass]="trade()!.outcomeTag?.toLowerCase()"
                 >{{ trade()!.outcomeTag }}</span
               >
             </div>
           </div>
-        </div>
 
-        <!-- Thinking Layer -->
-        <div class="card">
-          <h3 class="card-title">Thinking Layer</h3>
-          <div class="thinking-item">
-            <span class="tl">Why I took this trade</span>
-            <p class="tv">{{ trade()!.whyTookTrade }}</p>
+          <!-- Time Frames -->
+          <div class="tf-section" *ngIf="(trade()!.timeFrames || []).length">
+            <h4 class="sub-title">Time Frames Used</h4>
+            <div class="tf-list">
+              <span
+                *ngFor="let tf of trade()!.timeFrames"
+                class="tf-pill"
+                [ngClass]="tfColorClass(tf)"
+                >{{ tf }}</span
+              >
+            </div>
           </div>
-          <div class="thinking-item">
-            <span class="tl">Edge / Setup Logic</span>
-            <p class="tv">{{ trade()!.edgeOrSetupLogic }}</p>
-          </div>
-          <div class="thinking-item">
-            <span class="tl">Confirmation Used</span>
-            <p class="tv">{{ trade()!.confirmationUsed }}</p>
-          </div>
-          <div class="thinking-item">
-            <span class="tl">Invalidation Condition</span>
-            <p class="tv">{{ trade()!.invalidationReason }}</p>
-          </div>
-          <div class="thinking-item">
-            <span class="tl">Emotional State</span>
-            <span
-              class="emotion-tag"
-              [class]="trade()!.emotionalState.toLowerCase()"
-              >{{ trade()!.emotionalState }}</span
-            >
-          </div>
-          <div class="thinking-item" *ngIf="trade()!.tags?.length">
-            <span class="tl">Tags</span>
-            <div class="tags-row">
-              <span *ngFor="let tag of trade()!.tags" class="tag">{{
+
+          <!-- Tags -->
+          <div class="tags-section" *ngIf="(trade()!.tags || []).length">
+            <h4 class="sub-title">Tags</h4>
+            <div class="tags-list">
+              <span *ngFor="let tag of trade()!.tags" class="tag-chip">{{
                 tag
               }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Post-Trade Reflection — always editable -->
+        <!-- RIGHT: Thinking Layer -->
+        <div class="card">
+          <h3 class="card-title">Thinking Layer</h3>
+          <div class="thinking-rows">
+            <div class="thinking-item">
+              <span class="tl">Why I took this trade</span>
+              <p class="tv">{{ trade()!.whyTookTrade }}</p>
+            </div>
+            <div class="thinking-item">
+              <span class="tl">Edge / Setup Logic</span>
+              <p class="tv">{{ trade()!.edgeOrSetupLogic }}</p>
+            </div>
+            <div class="thinking-item">
+              <span class="tl">Confirmation Used</span>
+              <p class="tv">{{ trade()!.confirmationUsed }}</p>
+            </div>
+            <div class="thinking-item">
+              <span class="tl">Invalidation Condition</span>
+              <p class="tv">{{ trade()!.invalidationReason }}</p>
+            </div>
+            <div class="thinking-item">
+              <span class="tl">Emotional State</span>
+              <span
+                class="emotion-pill"
+                [ngClass]="trade()!.emotionalState?.toLowerCase()"
+              >
+                {{ trade()!.emotionalState }}
+              </span>
+            </div>
+            <div class="thinking-item" *ngIf="(trade()!.tags || []).length">
+              <span class="tl">Tags</span>
+              <div class="tags-list" style="margin-top:4px">
+                <span *ngFor="let tag of trade()!.tags" class="tag-chip">{{
+                  tag
+                }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart Images — full width if present -->
+        <div
+          class="card images-card"
+          *ngIf="(trade()!.chartImageUrls || []).length"
+        >
+          <h3 class="card-title">
+            Chart Screenshots
+            <span class="img-count"
+              >{{ (trade()!.chartImageUrls || []).length }} image{{
+                (trade()!.chartImageUrls || []).length > 1 ? "s" : ""
+              }}</span
+            >
+          </h3>
+          <div class="images-grid">
+            <div
+              *ngFor="let img of trade()!.chartImageUrls; let i = index"
+              class="image-wrap"
+              (click)="openImage(img)"
+            >
+              <img [src]="img" [alt]="'Chart ' + (i + 1)" class="chart-img" />
+              <div class="image-hover-label">
+                Chart {{ i + 1 }} · Click to expand
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lightbox -->
+        <div
+          class="lightbox"
+          *ngIf="lightboxImg()"
+          (click)="lightboxImg.set(null)"
+        >
+          <img [src]="lightboxImg()!" class="lightbox-img" />
+          <button class="lightbox-close" (click)="lightboxImg.set(null)">
+            ✕
+          </button>
+        </div>
+
+        <!-- Post-Trade Reflection — single form, always editable -->
         <div class="card reflection-card">
-          <div class="card-header-row">
+          <div class="reflection-header">
             <h3 class="card-title">Post-Trade Reflection</h3>
             <button
-              (click)="editingReflection.set(!editingReflection())"
+              *ngIf="!editingReflection()"
+              (click)="editingReflection.set(true)"
               class="edit-btn"
             >
-              {{ editingReflection() ? "View" : "Edit →" }}
+              {{ hasReflection() ? "Edit ✏" : "Add Reflection +" }}
             </button>
           </div>
 
-          <!-- View mode -->
-          <div *ngIf="!editingReflection()">
-            <div
-              *ngIf="
-                trade()!.whatWentRight || trade()!.whatWentWrong;
-                else noReflection
-              "
-            >
-              <div class="thinking-item" *ngIf="trade()!.whatWentRight">
-                <span class="tl positive">✓ What went right</span>
-                <p class="tv">{{ trade()!.whatWentRight }}</p>
-              </div>
-              <div class="thinking-item" *ngIf="trade()!.whatWentWrong">
-                <span class="tl negative">✗ What went wrong</span>
-                <p class="tv">{{ trade()!.whatWentWrong }}</p>
-              </div>
-              <div class="thinking-item" *ngIf="trade()!.willRepeat">
-                <span class="tl">→ Will repeat</span>
-                <p class="tv">{{ trade()!.willRepeat }}</p>
-              </div>
-              <div class="thinking-item" *ngIf="trade()!.willAvoid">
-                <span class="tl">✗ Will avoid</span>
-                <p class="tv">{{ trade()!.willAvoid }}</p>
-              </div>
-              <div class="discipline-score" *ngIf="trade()!.disciplineScore">
-                Discipline Score:
-                <strong>{{ trade()!.disciplineScore }}/10</strong>
+          <!-- View mode — shown when not editing and reflection exists -->
+          <div
+            *ngIf="!editingReflection() && hasReflection()"
+            class="reflection-view"
+          >
+            <div class="rv-row" *ngIf="trade()!.exitPrice">
+              <span class="rl">Exit Price</span>
+              <span class="rv"
+                >₹{{ trade()!.exitPrice | number: "1.2-2" }}</span
+              >
+            </div>
+            <div class="rv-row" *ngIf="trade()!.whatWentRight">
+              <span class="rl pos-label">✓ What went right</span>
+              <p class="rv">{{ trade()!.whatWentRight }}</p>
+            </div>
+            <div class="rv-row" *ngIf="trade()!.whatWentWrong">
+              <span class="rl neg-label">✗ What went wrong</span>
+              <p class="rv">{{ trade()!.whatWentWrong }}</p>
+            </div>
+            <div class="rv-row" *ngIf="trade()!.willRepeat">
+              <span class="rl">→ Will repeat</span>
+              <p class="rv">{{ trade()!.willRepeat }}</p>
+            </div>
+            <div class="rv-row" *ngIf="trade()!.willAvoid">
+              <span class="rl">✗ Will avoid</span>
+              <p class="rv">{{ trade()!.willAvoid }}</p>
+            </div>
+            <div class="score-display" *ngIf="trade()!.disciplineScore">
+              <span class="rl">Discipline Score</span>
+              <div class="score-chips">
+                <span
+                  *ngFor="let s of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"
+                  class="score-chip"
+                  [class.active]="trade()!.disciplineScore === s"
+                  [ngClass]="
+                    s <= 3 ? 'score-low' : s <= 6 ? 'score-mid' : 'score-high'
+                  "
+                >
+                  {{ s }}
+                </span>
               </div>
             </div>
-            <ng-template #noReflection>
-              <div class="no-reflection">
-                ⚠ Post-trade reflection not completed.
-                <button
-                  class="edit-inline-btn"
-                  (click)="editingReflection.set(true)"
-                >
-                  Add it now →
-                </button>
-              </div>
-            </ng-template>
           </div>
 
-          <!-- Edit mode — always available -->
+          <!-- No reflection placeholder -->
+          <div
+            *ngIf="!editingReflection() && !hasReflection()"
+            class="no-reflection"
+          >
+            <p>Exit price update is not set</p>
+            <p class="no-ref-sub">
+              Post-trade reflection not filled in yet. Take 2 minutes to review
+              this trade.
+            </p>
+            <button
+              (click)="editingReflection.set(true)"
+              class="add-reflection-btn"
+            >
+              Add Reflection →
+            </button>
+          </div>
+
+          <!-- Edit / Add form -->
           <div *ngIf="editingReflection()" class="reflection-form">
-            <div class="form-group">
-              <label
-                >Exit Price <span class="hint">Update if not set</span></label
+            <div class="rf-group">
+              <label class="rf-label"
+                >Exit Price
+                <span class="rf-hint">Update if not set</span></label
               >
               <input
                 type="number"
                 [(ngModel)]="ref.exitPrice"
-                class="form-input"
+                class="rf-input"
                 placeholder="Exit price"
               />
             </div>
-            <div class="form-group">
-              <label>What went right?</label>
+            <div class="rf-group">
+              <label class="rf-label pos-label">What went right?</label>
               <textarea
                 [(ngModel)]="ref.whatWentRight"
                 rows="2"
-                class="form-textarea"
+                class="rf-textarea"
                 placeholder="Process, execution, patience — be specific"
               ></textarea>
             </div>
-            <div class="form-group">
-              <label>What went wrong?</label>
+            <div class="rf-group">
+              <label class="rf-label neg-label">What went wrong?</label>
               <textarea
                 [(ngModel)]="ref.whatWentWrong"
                 rows="2"
-                class="form-textarea"
+                class="rf-textarea"
                 placeholder="Be honest. Mistakes only compound if unacknowledged."
               ></textarea>
             </div>
-            <div class="form-group">
-              <label>What will you repeat?</label>
+            <div class="rf-group">
+              <label class="rf-label">What will you repeat?</label>
               <textarea
                 [(ngModel)]="ref.willRepeat"
                 rows="2"
-                class="form-textarea"
+                class="rf-textarea"
               ></textarea>
             </div>
-            <div class="form-group">
-              <label>What will you avoid?</label>
+            <div class="rf-group">
+              <label class="rf-label">What will you avoid?</label>
               <textarea
                 [(ngModel)]="ref.willAvoid"
                 rows="2"
-                class="form-textarea"
+                class="rf-textarea"
               ></textarea>
             </div>
-            <div class="form-group">
-              <label>Discipline Score (1–10)</label>
-              <div class="score-grid">
+            <div class="rf-group">
+              <label class="rf-label">Discipline Score (1–10)</label>
+              <div class="score-btn-row">
                 <button
                   *ngFor="let s of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]"
                   type="button"
                   class="score-btn"
                   [class.active]="ref.disciplineScore === s"
-                  [ngClass]="scoreClass(s)"
+                  [ngClass]="
+                    s <= 3 ? 'sbtn-low' : s <= 6 ? 'sbtn-mid' : 'sbtn-high'
+                  "
                   (click)="ref.disciplineScore = s"
                 >
                   {{ s }}
                 </button>
               </div>
             </div>
-            <div class="form-group sl-check">
-              <label class="checkbox-label">
+            <div class="rf-group rf-check">
+              <label class="check-label">
                 <input type="checkbox" [(ngModel)]="ref.slRespected" />
                 <span>SL was respected</span>
               </label>
-              <span *ngIf="!ref.slRespected" class="sl-warn-small"
-                >This will be tagged as #DisciplineBreak</span
-              >
             </div>
-            <div class="form-actions">
-              <button
-                (click)="editingReflection.set(false)"
-                class="btn-ghost-sm"
-              >
+            <div class="rf-error" *ngIf="saveError()">{{ saveError() }}</div>
+            <div class="rf-actions">
+              <button (click)="cancelEdit()" class="btn-ghost-sm">
                 Cancel
               </button>
               <button
@@ -322,93 +435,26 @@ import { Trade } from "../../shared/models/trade.model";
             </div>
           </div>
         </div>
-
-        <!-- Reflection Edit Form -->
-        <div class="card reflection-card" *ngIf="editingReflection()">
-          <h3 class="card-title">Add / Update Reflection</h3>
-          <div class="reflection-form">
-            <div class="form-group">
-              <label>Exit Price</label>
-              <input
-                type="number"
-                [(ngModel)]="ref.exitPrice"
-                class="form-input"
-                placeholder="If not already set"
-              />
-            </div>
-            <div class="form-group">
-              <label>What went right?</label>
-              <textarea
-                [(ngModel)]="ref.whatWentRight"
-                rows="2"
-                class="form-textarea"
-                placeholder="Process, execution, patience..."
-              ></textarea>
-            </div>
-            <div class="form-group">
-              <label>What went wrong?</label>
-              <textarea
-                [(ngModel)]="ref.whatWentWrong"
-                rows="2"
-                class="form-textarea"
-                placeholder="Be honest. Mistakes only compound if unacknowledged."
-              ></textarea>
-            </div>
-            <div class="form-group">
-              <label>What will you repeat?</label>
-              <textarea
-                [(ngModel)]="ref.willRepeat"
-                rows="2"
-                class="form-textarea"
-              ></textarea>
-            </div>
-            <div class="form-group">
-              <label>What will you avoid?</label>
-              <textarea
-                [(ngModel)]="ref.willAvoid"
-                rows="2"
-                class="form-textarea"
-              ></textarea>
-            </div>
-            <div class="form-group">
-              <label>Discipline Score (1-10)</label>
-              <input
-                type="number"
-                [(ngModel)]="ref.disciplineScore"
-                min="1"
-                max="10"
-                class="form-input"
-              />
-            </div>
-            <div class="form-group sl-check">
-              <label class="checkbox-label">
-                <input type="checkbox" [(ngModel)]="ref.slRespected" />
-                <span>SL was respected</span>
-              </label>
-            </div>
-            <div class="form-actions">
-              <button (click)="editingReflection.set(false)" class="btn-ghost">
-                Cancel
-              </button>
-              <button
-                (click)="saveReflection()"
-                class="btn-primary"
-                [disabled]="saving()"
-              >
-                {{ saving() ? "Saving..." : "Save Reflection" }}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
+
+    <ng-template #loading>
+      <div class="loading-page">Loading trade...</div>
+    </ng-template>
   `,
   styles: [
     `
       .page {
         padding: 32px;
-        max-width: 1200px;
+        max-width: 1400px;
       }
+      .loading-page {
+        text-align: center;
+        padding: 100px;
+        color: #64748b;
+      }
+
+      /* ─── Header ─────────────────────────────────────────── */
       .back-link {
         color: #64748b;
         text-decoration: none;
@@ -416,79 +462,106 @@ import { Trade } from "../../shared/models/trade.model";
         display: block;
         margin-bottom: 12px;
       }
-      .header-top {
+      .back-link:hover {
+        color: #3b82f6;
+      }
+      .trade-header {
+        margin-bottom: 28px;
+      }
+      .header-main {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 28px;
+        margin-bottom: 8px;
       }
-      .page-title {
-        font-size: 28px;
-        font-weight: 700;
-        color: #e2e8f0;
-        margin: 0 0 4px;
+      .header-left {
         display: flex;
         align-items: center;
         gap: 12px;
+        flex-wrap: wrap;
       }
-      .trade-id-text {
-        font-size: 13px;
-        color: #475569;
-        font-family: monospace;
+      .trade-instrument {
+        font-size: 28px;
+        font-weight: 800;
+        color: #e2e8f0;
         margin: 0;
       }
       .dir-badge {
-        font-size: 14px;
-        padding: 4px 12px;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 10px;
         border-radius: 6px;
-        &.buy {
-          background: rgba(34, 197, 94, 0.12);
-          color: #22c55e;
-        }
-        &.sell {
-          background: rgba(239, 68, 68, 0.12);
-          color: #ef4444;
-        }
       }
-      .pnl-hero {
+      .dir-badge.buy {
+        background: rgba(34, 197, 94, 0.12);
+        color: #22c55e;
+        border: 1px solid #22c55e;
+      }
+      .dir-badge.sell {
+        background: rgba(239, 68, 68, 0.12);
+        color: #ef4444;
+        border: 1px solid #ef4444;
+      }
+      .reviewed-badge {
+        font-size: 11px;
+        color: #22c55e;
+        background: rgba(34, 197, 94, 0.1);
+        padding: 3px 8px;
+        border-radius: 20px;
+      }
+      .header-right {
         text-align: right;
       }
-      .pnl-amount {
-        display: block;
+      .pnl-display {
         font-size: 36px;
         font-weight: 800;
-        &.positive {
-          color: #22c55e;
-        }
-        &.negative {
-          color: #ef4444;
-        }
+      }
+      .pnl-display.pnl-pos {
+        color: #22c55e;
+      }
+      .pnl-display.pnl-neg {
+        color: #ef4444;
       }
       .pnl-pct {
-        font-size: 16px;
+        font-size: 13px;
         color: #64748b;
+        margin-top: 2px;
       }
-      .positive {
-        color: #22c55e !important;
+      .header-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: #475569;
+        flex-wrap: wrap;
       }
-      .negative {
-        color: #ef4444 !important;
+      .meta-id {
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .meta-dot {
+        color: #1e2433;
       }
 
+      /* ─── Grid ───────────────────────────────────────────── */
       .detail-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 20px;
       }
-      .reflection-card {
-        grid-column: 1 / -1;
-      }
 
+      /* ─── Cards ──────────────────────────────────────────── */
       .card {
         background: #0d1117;
         border: 1px solid #1e2433;
         border-radius: 12px;
-        padding: 20px;
+        padding: 22px;
+      }
+      .images-card {
+        grid-column: 1 / -1;
+      }
+      .reflection-card {
+        grid-column: 1 / -1;
       }
       .card-title {
         font-size: 12px;
@@ -498,40 +571,25 @@ import { Trade } from "../../shared/models/trade.model";
         letter-spacing: 0.8px;
         margin: 0 0 16px;
       }
-      .card-header-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-        .card-title {
-          margin: 0;
-        }
-      }
-      .edit-btn {
-        font-size: 13px;
-        color: #3b82f6;
-        background: none;
-        border: none;
-        cursor: pointer;
-        &:hover {
-          text-decoration: underline;
-        }
-      }
 
-      .data-grid {
+      /* ─── Data rows ──────────────────────────────────────── */
+      .data-rows {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 0;
       }
       .data-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 6px 0;
+        padding: 10px 0;
         border-bottom: 1px solid #111827;
       }
+      .data-row:last-of-type {
+        border-bottom: none;
+      }
       .dl {
-        font-size: 12px;
+        font-size: 13px;
         color: #475569;
       }
       .dv {
@@ -539,33 +597,440 @@ import { Trade } from "../../shared/models/trade.model";
         color: #94a3b8;
         font-weight: 500;
       }
-      .dv.sl {
-        color: #f59e0b;
-      }
-      .status-badge {
+      .sub-val {
         font-size: 11px;
+        color: #475569;
+        margin-left: 6px;
+      }
+      .open-val {
+        color: #3b82f6;
+      }
+      .sl-val {
+        color: #f59e0b;
         font-weight: 600;
-        padding: 3px 8px;
-        border-radius: 4px;
-        &.profit {
-          color: #22c55e;
-          background: rgba(34, 197, 94, 0.12);
-        }
-        &.loss {
-          color: #ef4444;
-          background: rgba(239, 68, 68, 0.12);
-        }
-        &.open {
-          color: #3b82f6;
-          background: rgba(59, 130, 246, 0.12);
-        }
-        &.breakeven {
-          color: #94a3b8;
-          background: rgba(148, 163, 184, 0.12);
-        }
+      }
+      .pos-val {
+        color: #22c55e;
+      }
+      .neg-val {
+        color: #ef4444;
+      }
+      .rr-good {
+        color: #22c55e;
+        font-weight: 600;
+      }
+      .rr-bad {
+        color: #ef4444;
+      }
+      .setup-val {
+        color: #7c3aed;
       }
 
-      .score-grid {
+      /* ─── Status pills ───────────────────────────────────── */
+      .status-pill {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 9px;
+        border-radius: 4px;
+      }
+      .status-pill.profit {
+        color: #22c55e;
+        background: rgba(34, 197, 94, 0.12);
+      }
+      .status-pill.loss {
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.12);
+      }
+      .status-pill.open {
+        color: #3b82f6;
+        background: rgba(59, 130, 246, 0.12);
+      }
+      .status-pill.breakeven {
+        color: #f59e0b;
+        background: rgba(245, 158, 11, 0.12);
+      }
+
+      /* ─── Time Frames ────────────────────────────────────── */
+      .tf-section {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid #1e2433;
+      }
+      .sub-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin: 0 0 10px;
+      }
+      .tf-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .tf-pill {
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 14px;
+        border: 1px solid;
+      }
+      .tf-short {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: rgba(59, 130, 246, 0.4);
+        color: #3b82f6;
+      }
+      .tf-medium {
+        background: rgba(139, 92, 246, 0.1);
+        border-color: rgba(139, 92, 246, 0.4);
+        color: #a78bfa;
+      }
+      .tf-long {
+        background: rgba(20, 184, 166, 0.1);
+        border-color: rgba(20, 184, 166, 0.4);
+        color: #2dd4bf;
+      }
+
+      /* ─── Tags ───────────────────────────────────────────── */
+      .tags-section {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid #1e2433;
+      }
+      .tags-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .tag-chip {
+        font-size: 12px;
+        color: #a78bfa;
+        background: rgba(139, 92, 246, 0.1);
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        padding: 3px 9px;
+        border-radius: 12px;
+      }
+
+      /* ─── Thinking Layer ─────────────────────────────────── */
+      .thinking-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .thinking-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .tl {
+        font-size: 11px;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .tv {
+        font-size: 14px;
+        color: #94a3b8;
+        margin: 0;
+        line-height: 1.6;
+      }
+      .emotion-pill {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 12px;
+        border-radius: 20px;
+      }
+      .emotion-pill.calm,
+      .emotion-pill.disciplined {
+        color: #22c55e;
+        background: rgba(34, 197, 94, 0.1);
+      }
+      .emotion-pill.fomo {
+        color: #f59e0b;
+        background: rgba(245, 158, 11, 0.1);
+      }
+      .emotion-pill.revenge {
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.1);
+      }
+      .emotion-pill.hesitation,
+      .emotion-pill.anxious {
+        color: #94a3b8;
+        background: rgba(148, 163, 184, 0.1);
+      }
+      .emotion-pill.overconfident {
+        color: #fb923c;
+        background: rgba(251, 146, 60, 0.1);
+      }
+
+      /* ─── Chart Images ───────────────────────────────────── */
+      .img-count {
+        font-size: 12px;
+        color: #a78bfa;
+        background: rgba(139, 92, 246, 0.1);
+        padding: 2px 8px;
+        border-radius: 12px;
+        margin-left: 8px;
+        font-weight: 600;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .images-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+      }
+      .image-wrap {
+        position: relative;
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid #1e2433;
+        cursor: pointer;
+        aspect-ratio: 16/9;
+        transition: border-color 0.15s;
+      }
+      .image-wrap:hover {
+        border-color: #3b82f6;
+      }
+      .chart-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .image-hover-label {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+        color: #fff;
+        font-size: 11px;
+        padding: 12px 8px 6px;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .image-wrap:hover .image-hover-label {
+        opacity: 1;
+      }
+
+      /* ─── Lightbox ───────────────────────────────────────── */
+      .lightbox {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.92);
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: zoom-out;
+      }
+      .lightbox-img {
+        max-width: 92vw;
+        max-height: 88vh;
+        border-radius: 8px;
+        object-fit: contain;
+      }
+      .lightbox-close {
+        position: fixed;
+        top: 20px;
+        right: 24px;
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: #fff;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      .lightbox-close:hover {
+        background: rgba(239, 68, 68, 0.4);
+      }
+
+      /* ─── Reflection ─────────────────────────────────────── */
+      .reflection-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      .reflection-header .card-title {
+        margin: 0;
+      }
+      .edit-btn {
+        font-size: 13px;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        color: #3b82f6;
+        padding: 6px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .edit-btn:hover {
+        background: rgba(59, 130, 246, 0.2);
+      }
+
+      .reflection-view {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .rv-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .rl {
+        font-size: 11px;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .rv {
+        font-size: 14px;
+        color: #94a3b8;
+        margin: 0;
+        line-height: 1.6;
+      }
+      .pos-label {
+        color: #22c55e !important;
+      }
+      .neg-label {
+        color: #ef4444 !important;
+      }
+      .score-display {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .score-chips {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .score-chip {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+        background: #0a0e1a;
+        border: 1px solid #1e2433;
+        color: #475569;
+      }
+      .score-chip.active.score-low {
+        background: rgba(239, 68, 68, 0.15);
+        border-color: #ef4444;
+        color: #ef4444;
+      }
+      .score-chip.active.score-mid {
+        background: rgba(245, 158, 11, 0.15);
+        border-color: #f59e0b;
+        color: #f59e0b;
+      }
+      .score-chip.active.score-high {
+        background: rgba(34, 197, 94, 0.15);
+        border-color: #22c55e;
+        color: #22c55e;
+      }
+
+      .no-reflection {
+        text-align: center;
+        padding: 28px 16px;
+        color: #475569;
+      }
+      .no-reflection p {
+        margin: 0 0 6px;
+        font-size: 14px;
+      }
+      .no-ref-sub {
+        font-size: 12px;
+        color: #334155;
+      }
+      .add-reflection-btn {
+        margin-top: 12px;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        color: #3b82f6;
+        padding: 8px 18px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+
+      .reflection-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .rf-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .rf-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .rf-hint {
+        font-size: 10px;
+        color: #334155;
+        text-transform: none;
+        font-weight: 400;
+      }
+      .rf-input,
+      .rf-textarea {
+        background: #0a0e1a;
+        border: 1px solid #1e2433;
+        border-radius: 8px;
+        color: #e2e8f0;
+        padding: 10px 12px;
+        font-size: 14px;
+        outline: none;
+      }
+      .rf-input:focus,
+      .rf-textarea:focus {
+        border-color: #3b82f6;
+      }
+      .rf-textarea {
+        resize: vertical;
+        min-height: 72px;
+        font-family: inherit;
+        line-height: 1.5;
+      }
+      .rf-check {
+        flex-direction: row;
+        align-items: center;
+      }
+      .check-label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 13px;
+        color: #94a3b8;
+        text-transform: none;
+        letter-spacing: 0;
+        font-weight: 400;
+      }
+      .check-label input {
+        width: 16px;
+        height: 16px;
+        accent-color: #3b82f6;
+      }
+      .score-btn-row {
         display: flex;
         gap: 6px;
         flex-wrap: wrap;
@@ -582,45 +1047,35 @@ import { Trade } from "../../shared/models/trade.model";
         cursor: pointer;
         transition: all 0.15s;
       }
-      .score-btn.score-low.active {
-        background: rgba(239, 68, 68, 0.15);
-        border-color: #ef4444;
-        color: #ef4444;
-      }
-      .score-btn.score-mid.active {
-        background: rgba(245, 158, 11, 0.15);
-        border-color: #f59e0b;
-        color: #f59e0b;
-      }
-      .score-btn.score-high.active {
-        background: rgba(34, 197, 94, 0.15);
-        border-color: #22c55e;
-        color: #22c55e;
-      }
       .score-btn:hover {
         border-color: #3b82f6;
         color: #3b82f6;
       }
-
-      .edit-inline-btn {
-        background: none;
-        border: none;
-        color: #3b82f6;
-        cursor: pointer;
-        font-size: 13px;
-        padding: 0;
-        margin-left: 8px;
-      }
-      .edit-inline-btn:hover {
-        text-decoration: underline;
-      }
-
-      .sl-warn-small {
-        font-size: 11px;
+      .score-btn.active.sbtn-low {
+        background: rgba(239, 68, 68, 0.15);
+        border-color: #ef4444;
         color: #ef4444;
-        margin-top: 4px;
       }
-
+      .score-btn.active.sbtn-mid {
+        background: rgba(245, 158, 11, 0.15);
+        border-color: #f59e0b;
+        color: #f59e0b;
+      }
+      .score-btn.active.sbtn-high {
+        background: rgba(34, 197, 94, 0.15);
+        border-color: #22c55e;
+        color: #22c55e;
+      }
+      .rf-error {
+        font-size: 12px;
+        color: #ef4444;
+      }
+      .rf-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        padding-top: 4px;
+      }
       .btn-primary-sm {
         background: #3b82f6;
         color: #fff;
@@ -648,173 +1103,6 @@ import { Trade } from "../../shared/models/trade.model";
         border-color: #ef4444;
         color: #ef4444;
       }
-
-      .thinking-item {
-        margin-bottom: 16px;
-        padding-bottom: 16px;
-        border-bottom: 1px solid #111827;
-        &:last-child {
-          border-bottom: none;
-        }
-      }
-      .tl {
-        font-size: 11px;
-        font-weight: 600;
-        color: #475569;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        display: block;
-        margin-bottom: 6px;
-        &.positive {
-          color: #22c55e;
-        }
-        &.negative {
-          color: #ef4444;
-        }
-      }
-      .tv {
-        font-size: 14px;
-        color: #94a3b8;
-        line-height: 1.6;
-        margin: 0;
-      }
-      .emotion-tag {
-        font-size: 12px;
-        padding: 3px 10px;
-        border-radius: 4px;
-        &.calm,
-        &.disciplined {
-          color: #22c55e;
-          background: rgba(34, 197, 94, 0.1);
-        }
-        &.fomo {
-          color: #f59e0b;
-          background: rgba(245, 158, 11, 0.1);
-        }
-        &.revenge {
-          color: #ef4444;
-          background: rgba(239, 68, 68, 0.1);
-        }
-        &.hesitation,
-        &.anxious {
-          color: #94a3b8;
-          background: rgba(148, 163, 184, 0.1);
-        }
-        &.overconfident {
-          color: #fb923c;
-          background: rgba(251, 146, 60, 0.1);
-        }
-      }
-      .tags-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-      }
-      .tag {
-        font-size: 11px;
-        color: #7c3aed;
-        background: rgba(124, 58, 237, 0.1);
-        padding: 3px 8px;
-        border-radius: 4px;
-      }
-
-      .no-reflection {
-        font-size: 13px;
-        color: #f59e0b;
-        padding: 16px;
-        background: rgba(245, 158, 11, 0.06);
-        border-radius: 8px;
-        border-left: 3px solid #f59e0b;
-      }
-      .discipline-score {
-        font-size: 13px;
-        color: #64748b;
-        margin-top: 12px;
-        strong {
-          color: #3b82f6;
-        }
-      }
-
-      .reflection-form {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-      }
-      .form-group {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-      label {
-        font-size: 12px;
-        font-weight: 600;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-      .form-input,
-      .form-textarea {
-        background: #0a0e1a;
-        border: 1px solid #1e2433;
-        border-radius: 8px;
-        color: #e2e8f0;
-        padding: 10px 12px;
-        font-size: 14px;
-        outline: none;
-        &:focus {
-          border-color: #3b82f6;
-        }
-        font-family: inherit;
-        line-height: 1.5;
-      }
-      .form-textarea {
-        resize: vertical;
-        min-height: 70px;
-      }
-      .sl-check {
-        flex-direction: row;
-      }
-      .checkbox-label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        cursor: pointer;
-        font-size: 13px;
-        color: #94a3b8;
-        text-transform: none;
-        letter-spacing: 0;
-        font-weight: 400;
-        input {
-          accent-color: #3b82f6;
-        }
-      }
-      .form-actions {
-        display: flex;
-        gap: 12px;
-        justify-content: flex-end;
-      }
-      .btn-primary {
-        background: #3b82f6;
-        color: #fff;
-        padding: 10px 24px;
-        border-radius: 8px;
-        border: none;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        &:disabled {
-          opacity: 0.6;
-        }
-      }
-      .btn-ghost {
-        background: none;
-        border: 1px solid #1e2433;
-        color: #64748b;
-        padding: 10px 20px;
-        border-radius: 8px;
-        font-size: 14px;
-        cursor: pointer;
-      }
     `,
   ],
 })
@@ -822,25 +1110,41 @@ export class TradeDetailComponent implements OnInit {
   trade = signal<Trade | null>(null);
   editingReflection = signal(false);
   saving = signal(false);
-  ref: any = {};
+  saveError = signal("");
+  lightboxImg = signal<string | null>(null);
+
+  ref: {
+    exitPrice?: number | null;
+    whatWentRight: string;
+    whatWentWrong: string;
+    willRepeat: string;
+    willAvoid: string;
+    disciplineScore?: number;
+    slRespected: boolean;
+    isReviewed: boolean;
+  } = {
+    exitPrice: null,
+    whatWentRight: "",
+    whatWentWrong: "",
+    willRepeat: "",
+    willAvoid: "",
+    disciplineScore: undefined,
+    slRespected: true,
+    isReviewed: true,
+  };
 
   constructor(
     private route: ActivatedRoute,
     private tradeService: TradeService,
   ) {}
 
-  // Change: always show reflection form, not hidden behind a button
-  // Replace editingReflection logic — make it default to true if no reflection
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get("id")!;
     this.tradeService.getTradeById(id).subscribe((t) => {
       this.trade.set(t);
-      // Auto-open editing if reflection is incomplete
-      if (!t.whatWentRight && !t.whatWentWrong) {
-        this.editingReflection.set(true);
-      }
+      // Pre-fill ref from existing data
       this.ref = {
-        exitPrice: t.exitPrice,
+        exitPrice: t.exitPrice ?? null,
         whatWentRight: t.whatWentRight || "",
         whatWentWrong: t.whatWentWrong || "",
         willRepeat: t.willRepeat || "",
@@ -849,20 +1153,86 @@ export class TradeDetailComponent implements OnInit {
         slRespected: t.slRespected,
         isReviewed: true,
       };
+      // Auto-open reflection if incomplete
+      if (!this.hasReflection()) {
+        this.editingReflection.set(true);
+      }
     });
   }
-  scoreClass(score: number): string {
-    if (score <= 3) return "score-low";
-    if (score <= 6) return "score-mid";
-    return "score-high";
+
+  hasReflection(): boolean {
+    const t = this.trade();
+    return !!(
+      t?.whatWentRight ||
+      t?.whatWentWrong ||
+      t?.willRepeat ||
+      t?.willAvoid ||
+      t?.disciplineScore
+    );
   }
+
+  cancelEdit() {
+    const t = this.trade();
+    if (t) {
+      this.ref = {
+        exitPrice: t.exitPrice ?? null,
+        whatWentRight: t.whatWentRight || "",
+        whatWentWrong: t.whatWentWrong || "",
+        willRepeat: t.willRepeat || "",
+        willAvoid: t.willAvoid || "",
+        disciplineScore: t.disciplineScore,
+        slRespected: t.slRespected,
+        isReviewed: true,
+      };
+    }
+    this.editingReflection.set(false);
+    this.saveError.set("");
+  }
+
   saveReflection() {
-    const id = this.trade()!.id;
+    const t = this.trade();
+    if (!t) return;
     this.saving.set(true);
-    this.tradeService.updateTrade(id, this.ref).subscribe((t) => {
-      this.trade.set(t);
-      this.saving.set(false);
-      this.editingReflection.set(false);
+    this.saveError.set("");
+
+    const payload: Partial<Trade> = {
+      whatWentRight: this.ref.whatWentRight,
+      whatWentWrong: this.ref.whatWentWrong,
+      willRepeat: this.ref.willRepeat,
+      willAvoid: this.ref.willAvoid,
+      disciplineScore: this.ref.disciplineScore,
+      slRespected: this.ref.slRespected,
+      isReviewed: true,
+    };
+    if (this.ref.exitPrice && +this.ref.exitPrice > 0) {
+      payload.exitPrice = +this.ref.exitPrice;
+    }
+
+    this.tradeService.updateTrade(t.id, payload).subscribe({
+      next: (updated) => {
+        this.trade.set(updated);
+        this.saving.set(false);
+        this.editingReflection.set(false);
+      },
+      error: (err) => {
+        this.saving.set(false);
+        this.saveError.set(
+          err?.error?.message || "Failed to save. Please try again.",
+        );
+      },
     });
+  }
+
+  openImage(img: string) {
+    this.lightboxImg.set(img);
+  }
+
+  // Time frame color helpers
+  tfColorClass(tf: string): string {
+    const short = ["1min", "3min", "5min", "10min", "15min"];
+    const medium = ["30min", "45min", "90min", "1hr", "2hr"];
+    if (short.includes(tf)) return "tf-short";
+    if (medium.includes(tf)) return "tf-medium";
+    return "tf-long";
   }
 }

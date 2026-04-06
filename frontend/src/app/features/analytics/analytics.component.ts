@@ -135,6 +135,52 @@ import { Analytics } from '../../shared/models/analytics.model';
             </div>
           </div>
 
+        const TIME_FRAME_TEMPLATE_SECTION = `
+        <!-- Time Frame Performance -->
+        <div class="perf-card" *ngIf="analytics()?.timeFramePerformance?.length">
+          <h3 class="perf-title">Time Frame Usage & Performance</h3>
+
+          <!-- Usage bar chart -->
+          <div class="tf-usage-bars" *ngIf="analytics()!.timeFrameUsage">
+            <div class="tf-bar-row" *ngFor="let item of timeFrameUsageEntries()">
+              <span class="tf-bar-label" [ngClass]="tfColorClass(item.tf)">{{ item.tf }}</span>
+              <div class="tf-bar-track">
+                <div class="tf-bar-fill"
+                    [ngClass]="tfColorClass(item.tf)"
+                    [style.width.%]="(item.count / maxTfUsage()) * 100">
+                </div>
+              </div>
+              <span class="tf-bar-count">{{ item.count }} trade{{ item.count !== 1 ? 's' : '' }}</span>
+            </div>
+          </div>
+
+          <!-- Performance table -->
+          <table class="perf-table" style="margin-top: 16px">
+            <thead>
+              <tr>
+                <th>Time Frame</th>
+                <th>Trades</th>
+                <th>Win %</th>
+                <th>Avg P&L</th>
+                <th>Total P&L</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let t of analytics()!.timeFramePerformance">
+                <td>
+                  <span class="tf-pill" [ngClass]="tfColorClass(t.timeFrame)">{{ t.timeFrame }}</span>
+                </td>
+                <td>{{ t.trades }}</td>
+                <td [class.pos]="t.winRate >= 50" [class.neg]="t.winRate < 50">{{ t.winRate | number:'1.1-1' }}%</td>
+                <td [class.pos]="t.avgPnl >= 0" [class.neg]="t.avgPnl < 0">₹{{ t.avgPnl | number:'1.0-0' }}</td>
+                <td [class.pos]="t.totalPnl >= 0" [class.neg]="t.totalPnl < 0">₹{{ t.totalPnl | number:'1.0-0' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        `;
+
+
           <!-- Monthly P&L -->
           <div class="card monthly-card" *ngIf="monthlyKeys().length">
             <h3 class="card-title">Monthly P&L</h3>
@@ -235,8 +281,32 @@ import { Analytics } from '../../shared/models/analytics.model';
     }
 
     .loading { text-align: center; padding: 80px; color: #64748b; }
+
+    const TF_STYLES = `
+  /* Time Frame pills in analytics */
+    .tf-pill { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 10px; border: 1px solid; }
+    .tf-pill.tf-short  { background: rgba(59,130,246,0.1);  border-color: rgba(59,130,246,0.4); color: #3b82f6; }
+    .tf-pill.tf-medium { background: rgba(139,92,246,0.1);  border-color: rgba(139,92,246,0.4); color: #a78bfa; }
+    .tf-pill.tf-long   { background: rgba(20,184,166,0.1);  border-color: rgba(20,184,166,0.4); color: #2dd4bf; }
+
+    /* Usage bar chart */
+    .tf-usage-bars { display: flex; flex-direction: column; gap: 8px; }
+    .tf-bar-row { display: flex; align-items: center; gap: 10px; }
+    .tf-bar-label { font-size: 12px; font-weight: 700; min-width: 52px; }
+    .tf-bar-label.tf-short  { color: #3b82f6; }
+    .tf-bar-label.tf-medium { color: #a78bfa; }
+    .tf-bar-label.tf-long   { color: #2dd4bf; }
+    .tf-bar-track { flex: 1; height: 8px; background: #1e2433; border-radius: 4px; overflow: hidden; }
+    .tf-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+    .tf-bar-fill.tf-short  { background: #3b82f6; }
+    .tf-bar-fill.tf-medium { background: #8b5cf6; }
+    .tf-bar-fill.tf-long   { background: #14b8a6; }
+    .tf-bar-count { font-size: 11px; color: #475569; min-width: 60px; text-align: right; }
+  `;
+    export { TIME_FRAME_TEMPLATE_SECTION, ANALYTICS_COMPONENT_ADDITIONS, TF_STYLES };
   `]
 })
+
 export class AnalyticsComponent implements OnInit {
   analytics = signal<Analytics | null>(null);
   loading = signal(false);
@@ -278,4 +348,29 @@ export class AnalyticsComponent implements OnInit {
     };
     return map[key] || key;
   }
+
+  const ANALYTICS_COMPONENT_ADDITIONS = `
+  // Time frame helpers
+  timeFrameUsageEntries(): Array<{tf: string, count: number}> {
+    const usage = this.analytics()?.timeFrameUsage;
+    if (!usage) return [];
+    return Object.entries(usage)
+      .map(([tf, count]) => ({ tf, count: count as number }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  maxTfUsage(): number {
+    const entries = this.timeFrameUsageEntries();
+    return entries.length ? Math.max(...entries.map(e => e.count)) : 1;
+  }
+
+  tfColorClass(tf: string): string {
+    const short  = ['1min','3min','5min','10min','15min'];
+    const medium = ['30min','45min','90min','1hr','2hr'];
+    if (short.includes(tf))  return 'tf-short';
+    if (medium.includes(tf)) return 'tf-medium';
+    return 'tf-long';
+  }
+`;
+
 }

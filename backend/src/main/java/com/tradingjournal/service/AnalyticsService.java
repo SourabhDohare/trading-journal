@@ -91,6 +91,8 @@ public class AnalyticsService {
                 .disciplineRating(calcDisciplineRating(analyticsBase))
                 .disciplineGrade(calcDisciplineGrade(analyticsBase))
                 .disciplineBreaks(detectDisciplineBreaks(analyticsBase))
+                .timeFrameUsage(calcTimeFrameUsage(analyticsBase))
+                .timeFramePerformance(calcTimeFramePerformance(analyticsBase))
                 .build();
     }
 
@@ -432,4 +434,51 @@ public class AnalyticsService {
     private long countByOutcome(List<Trade> trades, Trade.OutcomeTag outcome) {
         return trades.stream().filter(t -> t.getOutcomeTag() == outcome).count();
     }
+
+    private Map<String, Integer> calcTimeFrameUsage(List<Trade> trades) {
+        Map<String, Integer> usage = new LinkedHashMap<>();
+        for (Trade t : trades) {
+            if (t.getTimeFrames() == null)
+                continue;
+            for (String tf : t.getTimeFrames()) {
+                usage.merge(tf, 1, Integer::sum);
+            }
+        }
+        // Sort by usage descending
+        return usage.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey, Map.Entry::getValue,
+                        (e1, e2) -> e1, LinkedHashMap::new));
+    }
+
+    private List<AnalyticsDTO.TimeFrameStat> calcTimeFramePerformance(List<Trade> trades) {
+        Map<String, List<Trade>> byTf = new LinkedHashMap<>();
+        for (Trade t : trades) {
+            if (t.getTimeFrames() == null)
+                continue;
+            for (String tf : t.getTimeFrames()) {
+                byTf.computeIfAbsent(tf, k -> new ArrayList<>()).add(t);
+            }
+        }
+        return byTf.entrySet().stream().map(e -> {
+            String tf = e.getKey();
+            List<Trade> tfTrades = e.getValue();
+            long wins = tfTrades.stream()
+                    .filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.PROFIT).count();
+            double winRate = tfTrades.isEmpty() ? 0 : (wins * 100.0 / tfTrades.size());
+            BigDecimal totalPnl = tfTrades.stream()
+                    .filter(t -> t.getPnlAbsolute() != null)
+                    .map(Trade::getPnlAbsolute)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal avgPnl = tfTrades.isEmpty() ? BigDecimal.ZERO
+                    : totalPnl.divide(BigDecimal.valueOf(tfTrades.size()), 2, RoundingMode.HALF_UP);
+            return AnalyticsDTO.TimeFrameStat.builder()
+                    .timeFrame(tf).trades(tfTrades.size())
+                    .winRate(winRate).avgPnl(avgPnl).totalPnl(totalPnl).build();
+        })
+                .sorted(Comparator.comparingInt(AnalyticsDTO.TimeFrameStat::getTrades).reversed())
+                .collect(Collectors.toList());
+    }
+
 }

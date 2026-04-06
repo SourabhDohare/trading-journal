@@ -1,7 +1,9 @@
 package com.tradingjournal.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -17,14 +19,14 @@ public class AnalyticsDTO {
     private int losingTrades;
     private int breakevenTrades;
 
-    private BigDecimal winRate;           // %
+    private BigDecimal winRate; // %
     private BigDecimal totalPnl;
     private BigDecimal avgProfitPerWin;
     private BigDecimal avgLossPerLoss;
-    private BigDecimal profitFactor;      // Gross Profit / Gross Loss
-    private BigDecimal expectancy;        // (WinRate × AvgWin) - (LossRate × AvgLoss)
+    private BigDecimal profitFactor; // Gross Profit / Gross Loss
+    private BigDecimal expectancy; // (WinRate × AvgWin) - (LossRate × AvgLoss)
 
-    private BigDecimal avgRR;             // Average R:R
+    private BigDecimal avgRR; // Average R:R
     private BigDecimal avgPlannedRR;
     private BigDecimal avgActualRR;
 
@@ -57,6 +59,21 @@ public class AnalyticsDTO {
     private int disciplineRating; // 1-100
     private String disciplineGrade; // A, B, C, D, F
     private List<String> disciplineBreaks;
+
+    private Map<String, Integer> timeFrameUsage; // "15min" -> 7 (how many trades used it)
+    private List<TimeFrameStat> timeFramePerformance; // per-TF win rate & avg P&L
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TimeFrameStat {
+        private String timeFrame;
+        private int trades;
+        private double winRate;
+        private BigDecimal avgPnl;
+        private BigDecimal totalPnl;
+    }
 
     @Data
     @Builder
