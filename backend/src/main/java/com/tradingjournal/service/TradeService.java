@@ -137,10 +137,10 @@ public class TradeService {
             trades = tradeRepository.findByUserIdAndTradeDateBetweenOrderByTradeDateDesc(
                     userId, query.getDateFrom(), query.getDateTo());
         } else if (query.getLimit() != null) {
-            Pageable pageable = PageRequest.of(0, query.getLimit());
-            trades = tradeRepository.findLastNTrades(userId, pageable);
+            Pageable pageable = PageRequest.of(0, query.getLimit(), Sort.by("tradeDate").descending());
+            trades = tradeRepository.findByUserIdOrderByTradeDateDesc(userId, pageable).getContent();
         } else {
-            trades = tradeRepository.findByUserIdOrderByTradeDateDesc(userId, PageRequest.of(0, 50)).getContent();
+            trades = tradeRepository.findByUserIdOrderByTradeDateDesc(userId, PageRequest.of(0, 10000)).getContent();
         }
 
         return trades.stream().map(this::mapToResponse).toList();
