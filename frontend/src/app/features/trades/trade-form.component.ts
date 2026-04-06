@@ -10,6 +10,7 @@ import {
 } from "@angular/forms";
 import { Router, RouterLink } from "@angular/router";
 import { TradeService } from "../../core/services/trade.service";
+import { debounceTime, distinctUntilChanged } from "rxjs/operators";
 
 @Component({
   selector: "app-trade-form",
@@ -127,12 +128,21 @@ import { TradeService } from "../../core/services/trade.service";
               />
             </div>
             <div class="form-group">
-              <label>Exit Price <span class="hint">If closed</span></label>
+              <label>
+                Exit Price
+                <span class="hint" *ngIf="!isExitPriceSet()"
+                  >Leave blank if trade still open</span
+                >
+                <span class="hint-green" *ngIf="isExitPriceSet()"
+                  >✓ Trade will be marked closed</span
+                >
+              </label>
               <input
                 type="number"
                 formControlName="exitPrice"
                 placeholder="0.00"
                 class="form-input"
+                [class.exit-set]="isExitPriceSet()"
                 step="0.05"
               />
             </div>
@@ -328,27 +338,75 @@ import { TradeService } from "../../core/services/trade.service";
           </div>
         </div>
 
-        <!-- Section 4: Outcome (if trade is already closed) -->
+        <!-- Section 4: Outcome & Tags -->
         <div class="form-section">
           <h2 class="section-title">Outcome & Tags</h2>
           <div class="form-grid">
+            <!-- Outcome — auto-disabled when exit price is set -->
             <div class="form-group">
-              <label>Outcome</label>
-              <select formControlName="outcomeTag" class="form-select">
+              <label>
+                Outcome
+                <span class="hint" *ngIf="!isExitPriceSet()"
+                  >Select if trade is closed</span
+                >
+                <span class="hint-green" *ngIf="isExitPriceSet()"
+                  >Auto-calculated from exit price</span
+                >
+              </label>
+
+              <!-- Show native select ONLY when no exit price -->
+              <select
+                *ngIf="!isExitPriceSet()"
+                formControlName="outcomeTag"
+                class="form-select"
+              >
                 <option value="OPEN">Still Open</option>
                 <option value="PROFIT">Profit</option>
                 <option value="LOSS">Loss</option>
                 <option value="BREAKEVEN">Breakeven</option>
                 <option value="NO_TRADE">No Trade Taken</option>
               </select>
+
+              <!-- Show styled locked display ONLY when exit price is set -->
+              <div
+                *ngIf="isExitPriceSet()"
+                class="outcome-display"
+                [ngClass]="outcomeColorClass()"
+              >
+                <span class="outcome-lock-icon">🔒</span>
+                <span class="outcome-lock-text">{{
+                  form.getRawValue().outcomeTag
+                }}</span>
+              </div>
+
+              <!-- Badge shown only when locked -->
+              <span
+                *ngIf="isExitPriceSet()"
+                class="auto-badge"
+                [ngClass]="'badge-' + outcomeColorClass()"
+              >
+                ✓ Auto-set — {{ form.getRawValue().outcomeTag }} based on exit
+                price
+              </span>
             </div>
+
             <div class="form-group">
-              <label>P&L (₹)</label>
+              <label
+                >P&L (₹)
+                <span class="hint" *ngIf="isExitPriceSet()"
+                  >Auto-calculated</span
+                ></label
+              >
               <input
                 type="number"
                 formControlName="pnlAbsolute"
-                placeholder="Auto-calculated if entry/exit set"
+                [placeholder]="
+                  isExitPriceSet()
+                    ? 'Calculated on save'
+                    : 'Enter manually if known'
+                "
                 class="form-input"
+                [class.input-muted]="isExitPriceSet()"
               />
             </div>
             <div class="form-group">
@@ -428,15 +486,16 @@ import { TradeService } from "../../core/services/trade.service";
         padding: 32px;
         max-width: 900px;
       }
+
       .back-link {
         color: #64748b;
         text-decoration: none;
         font-size: 13px;
         display: block;
         margin-bottom: 8px;
-        &:hover {
-          color: #3b82f6;
-        }
+      }
+      .back-link:hover {
+        color: #3b82f6;
       }
       .page-title {
         font-size: 26px;
@@ -467,7 +526,6 @@ import { TradeService } from "../../core/services/trade.service";
       }
       .thinking-section {
         border-color: #3b82f6;
-        border-width: 1px;
       }
 
       .section-title {
@@ -519,6 +577,13 @@ import { TradeService } from "../../core/services/trade.service";
         font-weight: 400;
         letter-spacing: 0;
       }
+      .hint-green {
+        font-size: 11px;
+        color: #22c55e;
+        text-transform: none;
+        font-weight: 600;
+        letter-spacing: 0;
+      }
 
       .form-input,
       .form-select,
@@ -531,12 +596,15 @@ import { TradeService } from "../../core/services/trade.service";
         font-size: 14px;
         outline: none;
         transition: border-color 0.15s;
-        &:focus {
-          border-color: #3b82f6;
-        }
-        &::placeholder {
-          color: #334155;
-        }
+      }
+      .form-input:focus,
+      .form-select:focus,
+      .form-textarea:focus {
+        border-color: #3b82f6;
+      }
+      .form-input::placeholder,
+      .form-textarea::placeholder {
+        color: #334155;
       }
       .form-textarea {
         resize: vertical;
@@ -544,131 +612,89 @@ import { TradeService } from "../../core/services/trade.service";
         font-family: inherit;
         line-height: 1.5;
       }
+
+      /* Stop loss amber border */
       .sl-input {
         border-color: #f59e0b !important;
       }
 
-      .char-count {
-        font-size: 11px;
+      /* Exit price green border when set */
+      .form-input.exit-set {
+        border-color: #22c55e !important;
+      }
+
+      /* P&L muted when auto-calculated */
+      .form-input.input-muted {
+        border-color: #1e2433;
         color: #475569;
-        text-align: right;
-        &.warn {
-          color: #ef4444;
-        }
       }
 
-      .toggle-group {
+      /* ─── Outcome locked display ───────────────────────────────── */
+      .outcome-display {
         display: flex;
-        gap: 8px;
-      }
-      .toggle-btn {
-        flex: 1;
-        padding: 9px 14px;
-        background: #0a0e1a;
-        border: 1px solid #1e2433;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
         border-radius: 8px;
-        color: #64748b;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.15s;
-        &.active {
-          background: rgba(59, 130, 246, 0.15);
-          border-color: #3b82f6;
-          color: #3b82f6;
-        }
-        &.active-buy {
-          background: rgba(34, 197, 94, 0.12);
-          border-color: #22c55e;
-          color: #22c55e;
-        }
-        &.active-sell {
-          background: rgba(239, 68, 68, 0.12);
-          border-color: #ef4444;
-          color: #ef4444;
-        }
-        &.buy:hover {
-          border-color: #22c55e;
-        }
-        &.sell:hover {
-          border-color: #ef4444;
-        }
+        border: 1px solid;
+        min-height: 42px;
+      }
+      .outcome-lock-icon {
+        font-size: 14px;
+        flex-shrink: 0;
+      }
+      .outcome-lock-text {
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 1px;
       }
 
-      .emotion-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-        gap: 8px;
+      /* PROFIT — green */
+      .outcome-profit {
+        background: rgba(34, 197, 94, 0.08);
+        border-color: #22c55e;
+        color: #22c55e;
       }
-      .emotion-btn {
-        padding: 8px 12px;
-        background: #0a0e1a;
-        border: 1px solid #1e2433;
-        border-radius: 8px;
-        color: #64748b;
-        font-size: 13px;
-        cursor: pointer;
-        transition: all 0.15s;
-        &.calm.active {
-          background: rgba(34, 197, 94, 0.1);
-          border-color: #22c55e;
-          color: #22c55e;
-        }
-        &.fomo.active {
-          background: rgba(245, 158, 11, 0.1);
-          border-color: #f59e0b;
-          color: #f59e0b;
-        }
-        &.revenge.active {
-          background: rgba(239, 68, 68, 0.1);
-          border-color: #ef4444;
-          color: #ef4444;
-        }
-        &.hesitation.active {
-          background: rgba(148, 163, 184, 0.1);
-          border-color: #94a3b8;
-          color: #94a3b8;
-        }
-        &.active {
-          border-color: #3b82f6;
-        }
+      /* LOSS — red */
+      .outcome-loss {
+        background: rgba(239, 68, 68, 0.08);
+        border-color: #ef4444;
+        color: #ef4444;
       }
-      .emotion-warn {
-        font-size: 12px;
-        color: #f59e0b;
-        margin-top: 6px;
-        padding: 8px 12px;
+      /* BREAKEVEN — amber */
+      .outcome-breakeven {
         background: rgba(245, 158, 11, 0.08);
-        border-radius: 6px;
-        border-left: 2px solid #f59e0b;
-        &.danger {
-          color: #ef4444;
-          background: rgba(239, 68, 68, 0.08);
-          border-left-color: #ef4444;
-        }
+        border-color: #f59e0b;
+        color: #f59e0b;
+      }
+      /* OPEN — blue */
+      .outcome-open {
+        background: rgba(59, 130, 246, 0.08);
+        border-color: #3b82f6;
+        color: #3b82f6;
       }
 
-      .tags-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
+      /* ─── Auto badge dynamic colors ───────────────────────────── */
+      .auto-badge {
+        font-size: 11px;
+        font-weight: 600;
+        margin-top: 4px;
+        display: block;
       }
-      .tag-btn {
-        padding: 5px 12px;
-        background: #0a0e1a;
-        border: 1px solid #1e2433;
-        border-radius: 20px;
-        color: #64748b;
-        font-size: 12px;
-        cursor: pointer;
-        transition: all 0.15s;
-        &.active {
-          background: rgba(139, 92, 246, 0.1);
-          border-color: #8b5cf6;
-          color: #a78bfa;
-        }
+      .badge-outcome-profit {
+        color: #22c55e;
+      }
+      .badge-outcome-loss {
+        color: #ef4444;
+      }
+      .badge-outcome-breakeven {
+        color: #f59e0b;
+      }
+      .badge-outcome-open {
+        color: #3b82f6;
       }
 
+      /* ─── RR Preview ──────────────────────────────────────────── */
       .rr-preview {
         display: flex;
         align-items: center;
@@ -688,18 +714,144 @@ import { TradeService } from "../../core/services/trade.service";
       .rr-value {
         font-size: 20px;
         font-weight: 700;
-        &.rr-good {
-          color: #22c55e;
-        }
-        &.rr-bad {
-          color: #ef4444;
-        }
+      }
+      .rr-value.rr-good {
+        color: #22c55e;
+      }
+      .rr-value.rr-bad {
+        color: #ef4444;
       }
       .rr-warn {
         font-size: 12px;
         color: #f59e0b;
       }
 
+      /* ─── Direction / Type toggles ────────────────────────────── */
+      .toggle-group {
+        display: flex;
+        gap: 8px;
+      }
+      .toggle-btn {
+        flex: 1;
+        padding: 9px 14px;
+        background: #0a0e1a;
+        border: 1px solid #1e2433;
+        border-radius: 8px;
+        color: #64748b;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .toggle-btn.active {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: #3b82f6;
+        color: #3b82f6;
+      }
+      .toggle-btn.active-buy {
+        background: rgba(34, 197, 94, 0.12);
+        border-color: #22c55e;
+        color: #22c55e;
+      }
+      .toggle-btn.active-sell {
+        background: rgba(239, 68, 68, 0.12);
+        border-color: #ef4444;
+        color: #ef4444;
+      }
+      .toggle-btn.buy:hover {
+        border-color: #22c55e;
+      }
+      .toggle-btn.sell:hover {
+        border-color: #ef4444;
+      }
+
+      /* ─── Emotion buttons ─────────────────────────────────────── */
+      .emotion-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 8px;
+      }
+      .emotion-btn {
+        padding: 8px 12px;
+        background: #0a0e1a;
+        border: 1px solid #1e2433;
+        border-radius: 8px;
+        color: #64748b;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .emotion-btn.calm.active {
+        background: rgba(34, 197, 94, 0.1);
+        border-color: #22c55e;
+        color: #22c55e;
+      }
+      .emotion-btn.fomo.active {
+        background: rgba(245, 158, 11, 0.1);
+        border-color: #f59e0b;
+        color: #f59e0b;
+      }
+      .emotion-btn.revenge.active {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: #ef4444;
+        color: #ef4444;
+      }
+      .emotion-btn.hesitation.active {
+        background: rgba(148, 163, 184, 0.1);
+        border-color: #94a3b8;
+        color: #94a3b8;
+      }
+      .emotion-btn.active {
+        border-color: #3b82f6;
+      }
+      .emotion-warn {
+        font-size: 12px;
+        color: #f59e0b;
+        margin-top: 6px;
+        padding: 8px 12px;
+        background: rgba(245, 158, 11, 0.08);
+        border-radius: 6px;
+        border-left: 2px solid #f59e0b;
+      }
+      .emotion-warn.danger {
+        color: #ef4444;
+        background: rgba(239, 68, 68, 0.08);
+        border-left-color: #ef4444;
+      }
+
+      /* ─── Tags ────────────────────────────────────────────────── */
+      .tags-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .tag-btn {
+        padding: 5px 12px;
+        background: #0a0e1a;
+        border: 1px solid #1e2433;
+        border-radius: 20px;
+        color: #64748b;
+        font-size: 12px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .tag-btn.active {
+        background: rgba(139, 92, 246, 0.1);
+        border-color: #8b5cf6;
+        color: #a78bfa;
+      }
+
+      /* ─── Char count ──────────────────────────────────────────── */
+      .char-count {
+        font-size: 11px;
+        color: #475569;
+        text-align: right;
+      }
+      .char-count.warn {
+        color: #ef4444;
+      }
+
+      /* ─── SL check ────────────────────────────────────────────── */
       .sl-check {
         flex-direction: row;
         align-items: flex-start;
@@ -715,11 +867,11 @@ import { TradeService } from "../../core/services/trade.service";
         text-transform: none;
         letter-spacing: 0;
         font-weight: 400;
-        input {
-          width: 16px;
-          height: 16px;
-          accent-color: #3b82f6;
-        }
+      }
+      .checkbox-label input {
+        width: 16px;
+        height: 16px;
+        accent-color: #3b82f6;
       }
       .sl-warn {
         font-size: 12px;
@@ -727,6 +879,7 @@ import { TradeService } from "../../core/services/trade.service";
         margin-top: 6px;
       }
 
+      /* ─── Errors ──────────────────────────────────────────────── */
       .error {
         font-size: 11px;
         color: #ef4444;
@@ -740,6 +893,7 @@ import { TradeService } from "../../core/services/trade.service";
         font-size: 14px;
       }
 
+      /* ─── Form actions ────────────────────────────────────────── */
       .form-actions {
         display: flex;
         gap: 12px;
@@ -756,13 +910,13 @@ import { TradeService } from "../../core/services/trade.service";
         font-weight: 600;
         cursor: pointer;
         text-decoration: none;
-        &:hover {
-          background: #2563eb;
-        }
-        &:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
+      }
+      .btn-primary:hover {
+        background: #2563eb;
+      }
+      .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
       }
       .btn-ghost {
         background: none;
@@ -773,10 +927,10 @@ import { TradeService } from "../../core/services/trade.service";
         font-size: 15px;
         cursor: pointer;
         text-decoration: none;
-        &:hover {
-          border-color: #ef4444;
-          color: #ef4444;
-        }
+      }
+      .btn-ghost:hover {
+        border-color: #ef4444;
+        color: #ef4444;
       }
     `,
   ],
@@ -853,6 +1007,55 @@ export class TradeFormComponent implements OnInit {
       notes: [""],
       slRespected: [true],
     });
+
+    // Watch exit price — auto-set outcome and lock dropdown
+    this.form
+      .get("exitPrice")
+      ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
+      .subscribe((exitPrice) => {
+        const outcomeControl = this.form.get("outcomeTag");
+        if (exitPrice && +exitPrice > 0) {
+          const entry = +this.form.get("entryPrice")?.value || 0;
+          const direction = this.form.get("direction")?.value;
+          if (entry > 0) {
+            const priceDiff =
+              direction === "BUY" ? +exitPrice - entry : entry - +exitPrice;
+            if (priceDiff > 0) {
+              outcomeControl?.setValue("PROFIT");
+            } else if (priceDiff < 0) {
+              outcomeControl?.setValue("LOSS");
+            } else {
+              outcomeControl?.setValue("BREAKEVEN");
+            }
+          }
+          outcomeControl?.disable();
+        } else {
+          outcomeControl?.enable();
+          outcomeControl?.setValue("OPEN");
+        }
+      });
+
+    // Re-evaluate when entry price changes (exit already set)
+    this.form
+      .get("entryPrice")
+      ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
+      .subscribe(() => {
+        const exitPrice = this.form.get("exitPrice")?.value;
+        if (exitPrice && +exitPrice > 0) {
+          this.form.get("exitPrice")?.setValue(exitPrice, { emitEvent: true });
+        }
+      });
+
+    // Re-evaluate when direction changes (exit already set)
+    this.form
+      .get("direction")
+      ?.valueChanges.pipe(distinctUntilChanged())
+      .subscribe(() => {
+        const exitPrice = this.form.get("exitPrice")?.value;
+        if (exitPrice && +exitPrice > 0) {
+          this.form.get("exitPrice")?.setValue(exitPrice, { emitEvent: true });
+        }
+      });
   }
 
   get f() {
@@ -867,6 +1070,27 @@ export class TradeFormComponent implements OnInit {
     const risk = Math.abs(entry - sl);
     const reward = Math.abs(target - entry);
     return risk > 0 ? reward / risk : null;
+  }
+
+  isExitPriceSet(): boolean {
+    const exit = this.form.get("exitPrice")?.value;
+    return exit != null && +exit > 0;
+  }
+
+  outcomeColorClass(): string {
+    const outcome = this.form.getRawValue().outcomeTag;
+    switch (outcome) {
+      case "PROFIT":
+        return "outcome-profit";
+      case "LOSS":
+        return "outcome-loss";
+      case "BREAKEVEN":
+        return "outcome-breakeven";
+      case "OPEN":
+        return "outcome-open";
+      default:
+        return "outcome-open";
+    }
   }
 
   set(field: string, value: string) {
@@ -885,24 +1109,42 @@ export class TradeFormComponent implements OnInit {
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
+      const invalidFields = Object.keys(this.form.controls).filter(
+        (k) => this.form.controls[k].invalid && this.form.controls[k].enabled,
+      );
+      this.apiError.set(
+        "Please fill required fields: " + invalidFields.join(", "),
+      );
       return;
     }
 
     this.loading.set(true);
-    const payload = { ...this.form.value, tags: this.selectedTags() };
+
+    // getRawValue() includes disabled fields (outcomeTag when auto-locked)
+    const rawValue = this.form.getRawValue();
+    const payload = {
+      ...rawValue,
+      tags: this.selectedTags(),
+      slRespected: rawValue.slRespected ?? true,
+    };
 
     this.tradeService.createTrade(payload).subscribe({
       next: (trade) => {
         this.loading.set(false);
-        this.router.navigate(["/trades", trade.id]);
+        this.router.navigateByUrl("/trades/" + trade.id, { replaceUrl: true });
       },
       error: (err) => {
         this.loading.set(false);
         const body = err.error;
-        if (body?.details?.length) {
+        if (body?.fieldErrors) {
+          const msgs = Object.entries(body.fieldErrors)
+            .map(([f, m]) => `${f}: ${m}`)
+            .join(" | ");
+          this.apiError.set(msgs);
+        } else if (body?.details?.length) {
           this.apiError.set(body.details.join(" | "));
         } else {
-          this.apiError.set(body?.message || "An error occurred");
+          this.apiError.set(body?.message || "Failed to save trade");
         }
       },
     });
