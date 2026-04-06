@@ -30,44 +30,57 @@ public class AnalyticsService {
         } else {
             // FIXED: fetch ALL trades for user, no limit
             trades = tradeRepository.findByUserIdOrderByTradeDateDesc(
-            userId, PageRequest.of(0, 10000)).getContent();
+                    userId, PageRequest.of(0, 10000)).getContent();
         }
 
+        // FIXED: include any trade that has a PnL value OR is not OPEN
         List<Trade> closedTrades = trades.stream()
-                .filter(t -> t.getOutcomeTag() != null && t.getOutcomeTag() != Trade.OutcomeTag.OPEN)
+                .filter(t -> t.getOutcomeTag() != null
+                        && t.getOutcomeTag() != Trade.OutcomeTag.OPEN
+                        && t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE)
+                .toList();
+        // Also include trades with PnL even if outcomeTag wasn't updated
+        List<Trade> tradesWithPnl = trades.stream()
+                .filter(t -> t.getPnlAbsolute() != null
+                        && t.getPnlAbsolute().compareTo(BigDecimal.ZERO) != 0)
                 .toList();
 
+        // Use whichever list is larger
+        List<Trade> analyticsBase = closedTrades.size() >= tradesWithPnl.size()
+                ? closedTrades
+                : tradesWithPnl;
+
         return AnalyticsDTO.builder()
-                .totalTrades(closedTrades.size())
-                .winningTrades((int) countByOutcome(closedTrades, Trade.OutcomeTag.PROFIT))
-                .losingTrades((int) countByOutcome(closedTrades, Trade.OutcomeTag.LOSS))
-                .breakevenTrades((int) countByOutcome(closedTrades, Trade.OutcomeTag.BREAKEVEN))
-                .winRate(calcWinRate(closedTrades))
-                .totalPnl(sumPnl(closedTrades))
-                .avgProfitPerWin(avgPnlByOutcome(closedTrades, Trade.OutcomeTag.PROFIT))
-                .avgLossPerLoss(avgPnlByOutcome(closedTrades, Trade.OutcomeTag.LOSS))
-                .profitFactor(calcProfitFactor(closedTrades))
-                .expectancy(calcExpectancy(closedTrades))
-                .avgActualRR(calcAvgRR(closedTrades))
-                .avgPlannedRR(calcAvgPlannedRR(closedTrades))
-                .maxDrawdown(calcMaxDrawdown(closedTrades))
-                .maxConsecutiveLosses(BigDecimal.valueOf(calcMaxConsecutive(closedTrades, Trade.OutcomeTag.LOSS)))
-                .maxConsecutiveWins(BigDecimal.valueOf(calcMaxConsecutive(closedTrades, Trade.OutcomeTag.PROFIT)))
-                .bestTrade(maxPnl(closedTrades))
-                .worstTrade(minPnl(closedTrades))
-                .avgDisciplineScore(calcAvgDisciplineScore(closedTrades))
-                .setupPerformance(calcSetupPerformance(closedTrades))
-                .emotionPerformance(calcEmotionPerformance(closedTrades))
-                .instrumentPerformance(calcInstrumentPerformance(closedTrades))
-                .timePerformance(calcTimePerformance(closedTrades))
-                .monthlyPnl(calcMonthlyPnl(closedTrades))
-                .repeatingMistakes(detectRepeatingMistakes(closedTrades))
-                .bestSetups(detectBestSetups(closedTrades))
-                .worstBehaviors(detectWorstBehaviors(closedTrades))
-                .recommendations(generateRecommendations(closedTrades))
-                .disciplineRating(calcDisciplineRating(closedTrades))
-                .disciplineGrade(calcDisciplineGrade(closedTrades))
-                .disciplineBreaks(detectDisciplineBreaks(closedTrades))
+                .totalTrades(analyticsBase.size())
+                .winningTrades((int) countByOutcome(analyticsBase, Trade.OutcomeTag.PROFIT))
+                .losingTrades((int) countByOutcome(analyticsBase, Trade.OutcomeTag.LOSS))
+                .breakevenTrades((int) countByOutcome(analyticsBase, Trade.OutcomeTag.BREAKEVEN))
+                .winRate(calcWinRate(analyticsBase))
+                .totalPnl(sumPnl(analyticsBase))
+                .avgProfitPerWin(avgPnlByOutcome(analyticsBase, Trade.OutcomeTag.PROFIT))
+                .avgLossPerLoss(avgPnlByOutcome(analyticsBase, Trade.OutcomeTag.LOSS))
+                .profitFactor(calcProfitFactor(analyticsBase))
+                .expectancy(calcExpectancy(analyticsBase))
+                .avgActualRR(calcAvgRR(analyticsBase))
+                .avgPlannedRR(calcAvgPlannedRR(analyticsBase))
+                .maxDrawdown(calcMaxDrawdown(analyticsBase))
+                .maxConsecutiveLosses(BigDecimal.valueOf(calcMaxConsecutive(analyticsBase, Trade.OutcomeTag.LOSS)))
+                .maxConsecutiveWins(BigDecimal.valueOf(calcMaxConsecutive(analyticsBase, Trade.OutcomeTag.PROFIT)))
+                .bestTrade(maxPnl(analyticsBase))
+                .worstTrade(minPnl(analyticsBase))
+                .avgDisciplineScore(calcAvgDisciplineScore(analyticsBase))
+                .setupPerformance(calcSetupPerformance(analyticsBase))
+                .emotionPerformance(calcEmotionPerformance(analyticsBase))
+                .instrumentPerformance(calcInstrumentPerformance(analyticsBase))
+                .timePerformance(calcTimePerformance(analyticsBase))
+                .monthlyPnl(calcMonthlyPnl(analyticsBase))
+                .repeatingMistakes(detectRepeatingMistakes(analyticsBase))
+                .bestSetups(detectBestSetups(analyticsBase))
+                .worstBehaviors(detectWorstBehaviors(analyticsBase))
+                .recommendations(generateRecommendations(analyticsBase))
+                .disciplineRating(calcDisciplineRating(analyticsBase))
+                .disciplineGrade(calcDisciplineGrade(analyticsBase))
+                .disciplineBreaks(detectDisciplineBreaks(analyticsBase))
                 .build();
     }
 

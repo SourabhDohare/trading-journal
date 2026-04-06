@@ -156,6 +156,8 @@ public class TradeDTO {
     @Data
     public static class QueryRequest {
         private String instrument;
+        // Add to TradeDTO.QueryRequest class
+        private Trade.InstrumentType instrumentType;
         private Trade.OutcomeTag outcomeTag;
         private Trade.EmotionalState emotionalState;
         private Trade.SetupType setupType;
@@ -166,7 +168,7 @@ public class TradeDTO {
         private LocalDateTime dateFrom;
         private LocalDateTime dateTo;
         private Integer limit;
-        private String sortBy;    // tradeDate, pnlAbsolute, actualRR
-        private String sortDir;   // asc, desc
+        private String sortBy; // tradeDate, pnlAbsolute, actualRR
+        private String sortDir; // asc, desc
     }
 }

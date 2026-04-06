@@ -139,6 +139,9 @@ public class TradeService {
         } else if (query.getLimit() != null) {
             Pageable pageable = PageRequest.of(0, query.getLimit(), Sort.by("tradeDate").descending());
             trades = tradeRepository.findByUserIdOrderByTradeDateDesc(userId, pageable).getContent();
+        } // Add this condition in queryTrades() in TradeService.java
+        else if (query.getInstrumentType() != null) {
+            trades = tradeRepository.findByUserIdAndInstrumentType(userId, query.getInstrumentType());
         } else {
             trades = tradeRepository.findByUserIdOrderByTradeDateDesc(userId, PageRequest.of(0, 10000)).getContent();
         }
@@ -159,7 +162,7 @@ public class TradeService {
         long count = tradeRepository.countByUserId(userId);
         String tradeId = "TRD-" + LocalDateTime.now().format(TRADE_ID_FORMAT) + "-" + String.format("%04d", count + 1);
 
-        return Trade.builder()
+        Trade trade = Trade.builder()
                 .tradeId(tradeId)
                 .userId(userId)
                 .tradeDate(req.getTradeDate() != null ? req.getTradeDate() : LocalDateTime.now())
@@ -192,6 +195,25 @@ public class TradeService {
                 .taxes(req.getTaxes())
                 .slRespected(req.isSlRespected())
                 .build();
+
+        // ← ADD THIS BLOCK after .build()
+        // Auto-set outcomeTag based on exit price and PnL
+        if (req.getExitPrice() != null) {
+            if (req.getPnlAbsolute() != null) {
+                // User manually provided PnL
+                if (req.getPnlAbsolute().compareTo(BigDecimal.ZERO) > 0) {
+                    trade.setOutcomeTag(Trade.OutcomeTag.PROFIT);
+                } else if (req.getPnlAbsolute().compareTo(BigDecimal.ZERO) < 0) {
+                    trade.setOutcomeTag(Trade.OutcomeTag.LOSS);
+                } else {
+                    trade.setOutcomeTag(Trade.OutcomeTag.BREAKEVEN);
+                }
+            }
+            // If no manual PnL provided, calculateMetrics() will call recalculatePnl()
+            // which will set the outcomeTag automatically
+        }
+
+        return trade;
     }
 
     private void calculateMetrics(Trade trade, TradeDTO.CreateRequest req) {

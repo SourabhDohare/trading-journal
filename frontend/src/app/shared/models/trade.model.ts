@@ -87,6 +87,7 @@ export interface CreateTradeRequest {
 
 export interface TradeQuery {
   instrument?: string;
+  instrumentType?: InstrumentType; 
   outcomeTag?: OutcomeTag;
   emotionalState?: EmotionalState;
   setupType?: SetupType;

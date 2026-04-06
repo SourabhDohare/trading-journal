@@ -173,7 +173,7 @@ import { Analytics } from '../../shared/models/analytics.model';
     .page-title { font-size: 26px; font-weight: 700; color: #e2e8f0; margin: 0 0 4px; }
     .page-subtitle { font-size: 14px; color: #64748b; margin: 0; }
     .date-range { display: flex; align-items: center; gap: 8px; }
-    .date-input { background: #0d1117; border: 1px solid #1e2433; border-radius: 8px; color: #94a3b8; padding: 8px 12px; font-size: 13px; outline: none; }
+    .date-input { background: #0d1117; border: 1px solid #1e2433; border-radius: 8px; color: #94a3b8; padding: 8px 12px; font-size: 13px; outline: none; color-scheme: dark;}
     .date-sep { color: #475569; font-size: 13px; }
     .btn-primary { background: #3b82f6; color: #fff; padding: 9px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
     .btn-ghost { background: none; border: 1px solid #1e2433; color: #64748b; padding: 9px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; }
