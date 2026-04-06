@@ -10,7 +10,6 @@ import {
 } from "@angular/forms";
 import { Router, RouterLink } from "@angular/router";
 import { TradeService } from "../../core/services/trade.service";
-import { debounceTime, distinctUntilChanged } from "rxjs/operators";
 
 @Component({
   selector: "app-trade-form",
@@ -128,21 +127,12 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
               />
             </div>
             <div class="form-group">
-              <label>
-                Exit Price
-                <span class="hint" *ngIf="!isExitPriceSet()"
-                  >Leave blank if trade still open</span
-                >
-                <span class="hint-green" *ngIf="isExitPriceSet()"
-                  >✓ Trade will be marked closed</span
-                >
-              </label>
+              <label>Exit Price <span class="hint">If closed</span></label>
               <input
                 type="number"
                 formControlName="exitPrice"
                 placeholder="0.00"
                 class="form-input"
-                [class.exit-set]="isExitPriceSet()"
                 step="0.05"
               />
             </div>
@@ -338,64 +328,27 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
           </div>
         </div>
 
-        <!-- Section 4: Outcome & Tags -->
+        <!-- Section 4: Outcome (if trade is already closed) -->
         <div class="form-section">
           <h2 class="section-title">Outcome & Tags</h2>
           <div class="form-grid">
-            <!-- Outcome — auto-disabled when exit price is set -->
             <div class="form-group">
-              <label>
-                Outcome
-                <span class="hint" *ngIf="!isExitPriceSet()"
-                  >Select if trade is closed</span
-                >
-                <span class="hint-green" *ngIf="isExitPriceSet()"
-                  >Auto-calculated from exit price</span
-                >
-              </label>
-              <div class="outcome-wrapper">
-                <select
-                  formControlName="outcomeTag"
-                  class="form-select"
-                  [class.auto-calculated]="isExitPriceSet()"
-                >
-                  <option value="OPEN">Still Open</option>
-                  <option value="PROFIT">Profit</option>
-                  <option value="LOSS">Loss</option>
-                  <option value="BREAKEVEN">Breakeven</option>
-                  <option value="NO_TRADE">No Trade Taken</option>
-                </select>
-                <!-- Lock overlay when auto-calculated -->
-                <div class="outcome-lock" *ngIf="isExitPriceSet()">
-                  <span class="lock-icon">🔒</span>
-                  <span class="lock-text">{{
-                    form.getRawValue().outcomeTag
-                  }}</span>
-                </div>
-              </div>
-              <span class="auto-badge" *ngIf="isExitPriceSet()">
-                ✓ Auto-set — {{ form.getRawValue().outcomeTag }} based on exit
-                price
-              </span>
+              <label>Outcome</label>
+              <select formControlName="outcomeTag" class="form-select">
+                <option value="OPEN">Still Open</option>
+                <option value="PROFIT">Profit</option>
+                <option value="LOSS">Loss</option>
+                <option value="BREAKEVEN">Breakeven</option>
+                <option value="NO_TRADE">No Trade Taken</option>
+              </select>
             </div>
-
             <div class="form-group">
-              <label
-                >P&L (₹)
-                <span class="hint" *ngIf="isExitPriceSet()"
-                  >Auto-calculated</span
-                ></label
-              >
+              <label>P&L (₹)</label>
               <input
                 type="number"
                 formControlName="pnlAbsolute"
-                [placeholder]="
-                  isExitPriceSet()
-                    ? 'Calculated on save'
-                    : 'Enter manually if known'
-                "
+                placeholder="Auto-calculated if entry/exit set"
                 class="form-input"
-                [class.auto-calculated]="isExitPriceSet()"
               />
             </div>
             <div class="form-group">
@@ -481,9 +434,9 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-size: 13px;
         display: block;
         margin-bottom: 8px;
-      }
-      .back-link:hover {
-        color: #3b82f6;
+        &:hover {
+          color: #3b82f6;
+        }
       }
       .page-title {
         font-size: 26px;
@@ -514,6 +467,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
       }
       .thinking-section {
         border-color: #3b82f6;
+        border-width: 1px;
       }
 
       .section-title {
@@ -565,13 +519,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-weight: 400;
         letter-spacing: 0;
       }
-      .hint-green {
-        font-size: 11px;
-        color: #22c55e;
-        text-transform: none;
-        font-weight: 600;
-        letter-spacing: 0;
-      }
 
       .form-input,
       .form-select,
@@ -584,15 +531,12 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-size: 14px;
         outline: none;
         transition: border-color 0.15s;
-      }
-      .form-input:focus,
-      .form-select:focus,
-      .form-textarea:focus {
-        border-color: #3b82f6;
-      }
-      .form-input::placeholder,
-      .form-textarea::placeholder {
-        color: #334155;
+        &:focus {
+          border-color: #3b82f6;
+        }
+        &::placeholder {
+          color: #334155;
+        }
       }
       .form-textarea {
         resize: vertical;
@@ -604,76 +548,13 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         border-color: #f59e0b !important;
       }
 
-      /* Exit price set — green border to show trade is closed */
-      .form-input.exit-set {
-        border-color: #22c55e !important;
-      }
-
-      /* Auto-calculated outcome — green, locked appearance */
-      .form-select.auto-calculated {
-        border-color: #22c55e;
-        color: #22c55e;
-        opacity: 0.7;
-        cursor: not-allowed;
-        pointer-events: none;
-      }
-
-      /* P&L auto-calculated */
-      .form-input.auto-calculated {
-        border-color: #1e2433;
-        color: #475569;
-        cursor: not-allowed;
-      }
-
-      /* Auto badge */
-      .auto-badge {
-        font-size: 11px;
-        color: #22c55e;
-        margin-top: 2px;
-        display: block;
-        font-weight: 600;
-      }
-
-      /* Outcome wrapper — positions the lock overlay */
-      .outcome-wrapper {
-        position: relative;
-      }
-      .outcome-wrapper .form-select {
-        width: 100%;
-      }
-
-      /* Lock overlay shown on top of disabled select */
-      .outcome-lock {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(34, 197, 94, 0.08);
-        border: 1px solid #22c55e;
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 10px 12px;
-        pointer-events: none;
-      }
-      .lock-icon {
-        font-size: 14px;
-      }
-      .lock-text {
-        font-size: 14px;
-        font-weight: 700;
-        color: #22c55e;
-      }
-
       .char-count {
         font-size: 11px;
         color: #475569;
         text-align: right;
-      }
-      .char-count.warn {
-        color: #ef4444;
+        &.warn {
+          color: #ef4444;
+        }
       }
 
       .toggle-group {
@@ -691,27 +572,27 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-weight: 600;
         cursor: pointer;
         transition: all 0.15s;
-      }
-      .toggle-btn.active {
-        background: rgba(59, 130, 246, 0.15);
-        border-color: #3b82f6;
-        color: #3b82f6;
-      }
-      .toggle-btn.active-buy {
-        background: rgba(34, 197, 94, 0.12);
-        border-color: #22c55e;
-        color: #22c55e;
-      }
-      .toggle-btn.active-sell {
-        background: rgba(239, 68, 68, 0.12);
-        border-color: #ef4444;
-        color: #ef4444;
-      }
-      .toggle-btn.buy:hover {
-        border-color: #22c55e;
-      }
-      .toggle-btn.sell:hover {
-        border-color: #ef4444;
+        &.active {
+          background: rgba(59, 130, 246, 0.15);
+          border-color: #3b82f6;
+          color: #3b82f6;
+        }
+        &.active-buy {
+          background: rgba(34, 197, 94, 0.12);
+          border-color: #22c55e;
+          color: #22c55e;
+        }
+        &.active-sell {
+          background: rgba(239, 68, 68, 0.12);
+          border-color: #ef4444;
+          color: #ef4444;
+        }
+        &.buy:hover {
+          border-color: #22c55e;
+        }
+        &.sell:hover {
+          border-color: #ef4444;
+        }
       }
 
       .emotion-grid {
@@ -728,29 +609,29 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-size: 13px;
         cursor: pointer;
         transition: all 0.15s;
-      }
-      .emotion-btn.calm.active {
-        background: rgba(34, 197, 94, 0.1);
-        border-color: #22c55e;
-        color: #22c55e;
-      }
-      .emotion-btn.fomo.active {
-        background: rgba(245, 158, 11, 0.1);
-        border-color: #f59e0b;
-        color: #f59e0b;
-      }
-      .emotion-btn.revenge.active {
-        background: rgba(239, 68, 68, 0.1);
-        border-color: #ef4444;
-        color: #ef4444;
-      }
-      .emotion-btn.hesitation.active {
-        background: rgba(148, 163, 184, 0.1);
-        border-color: #94a3b8;
-        color: #94a3b8;
-      }
-      .emotion-btn.active {
-        border-color: #3b82f6;
+        &.calm.active {
+          background: rgba(34, 197, 94, 0.1);
+          border-color: #22c55e;
+          color: #22c55e;
+        }
+        &.fomo.active {
+          background: rgba(245, 158, 11, 0.1);
+          border-color: #f59e0b;
+          color: #f59e0b;
+        }
+        &.revenge.active {
+          background: rgba(239, 68, 68, 0.1);
+          border-color: #ef4444;
+          color: #ef4444;
+        }
+        &.hesitation.active {
+          background: rgba(148, 163, 184, 0.1);
+          border-color: #94a3b8;
+          color: #94a3b8;
+        }
+        &.active {
+          border-color: #3b82f6;
+        }
       }
       .emotion-warn {
         font-size: 12px;
@@ -760,11 +641,11 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         background: rgba(245, 158, 11, 0.08);
         border-radius: 6px;
         border-left: 2px solid #f59e0b;
-      }
-      .emotion-warn.danger {
-        color: #ef4444;
-        background: rgba(239, 68, 68, 0.08);
-        border-left-color: #ef4444;
+        &.danger {
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.08);
+          border-left-color: #ef4444;
+        }
       }
 
       .tags-grid {
@@ -781,11 +662,11 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-size: 12px;
         cursor: pointer;
         transition: all 0.15s;
-      }
-      .tag-btn.active {
-        background: rgba(139, 92, 246, 0.1);
-        border-color: #8b5cf6;
-        color: #a78bfa;
+        &.active {
+          background: rgba(139, 92, 246, 0.1);
+          border-color: #8b5cf6;
+          color: #a78bfa;
+        }
       }
 
       .rr-preview {
@@ -807,12 +688,12 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
       .rr-value {
         font-size: 20px;
         font-weight: 700;
-      }
-      .rr-value.rr-good {
-        color: #22c55e;
-      }
-      .rr-value.rr-bad {
-        color: #ef4444;
+        &.rr-good {
+          color: #22c55e;
+        }
+        &.rr-bad {
+          color: #ef4444;
+        }
       }
       .rr-warn {
         font-size: 12px;
@@ -834,11 +715,11 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         text-transform: none;
         letter-spacing: 0;
         font-weight: 400;
-      }
-      .checkbox-label input {
-        width: 16px;
-        height: 16px;
-        accent-color: #3b82f6;
+        input {
+          width: 16px;
+          height: 16px;
+          accent-color: #3b82f6;
+        }
       }
       .sl-warn {
         font-size: 12px;
@@ -875,13 +756,13 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-weight: 600;
         cursor: pointer;
         text-decoration: none;
-      }
-      .btn-primary:hover {
-        background: #2563eb;
-      }
-      .btn-primary:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
+        &:hover {
+          background: #2563eb;
+        }
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
       }
       .btn-ghost {
         background: none;
@@ -892,10 +773,10 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-size: 15px;
         cursor: pointer;
         text-decoration: none;
-      }
-      .btn-ghost:hover {
-        border-color: #ef4444;
-        color: #ef4444;
+        &:hover {
+          border-color: #ef4444;
+          color: #ef4444;
+        }
       }
     `,
   ],
@@ -972,58 +853,6 @@ export class TradeFormComponent implements OnInit {
       notes: [""],
       slRespected: [true],
     });
-
-    // Watch exit price — auto-set and lock outcome dropdown
-    // Replace exitPrice subscription
-    this.form
-      .get("exitPrice")
-      ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
-      .subscribe((exitPrice) => {
-        const outcomeControl = this.form.get("outcomeTag");
-        if (exitPrice && +exitPrice > 0) {
-          const entry = +this.form.get("entryPrice")?.value || 0;
-          const direction = this.form.get("direction")?.value;
-          if (entry > 0) {
-            const priceDiff =
-              direction === "BUY" ? +exitPrice - entry : entry - +exitPrice;
-            if (priceDiff > 0) {
-              outcomeControl?.setValue("PROFIT");
-            } else if (priceDiff < 0) {
-              outcomeControl?.setValue("LOSS");
-            } else {
-              // Price movement = 0, but brokerage may cause LOSS
-              // Let backend decide final outcome — set BREAKEVEN for now
-              outcomeControl?.setValue("BREAKEVEN");
-            }
-          }
-          outcomeControl?.disable();
-        } else {
-          outcomeControl?.enable();
-          outcomeControl?.setValue("OPEN");
-        }
-      });
-
-    // Replace entryPrice subscription
-    this.form
-      .get("entryPrice")
-      ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
-      .subscribe(() => {
-        const exitPrice = this.form.get("exitPrice")?.value;
-        if (exitPrice && +exitPrice > 0) {
-          this.form.get("exitPrice")?.setValue(exitPrice, { emitEvent: true });
-        }
-      });
-
-    // Replace direction subscription
-    this.form
-      .get("direction")
-      ?.valueChanges.pipe(distinctUntilChanged())
-      .subscribe(() => {
-        const exitPrice = this.form.get("exitPrice")?.value;
-        if (exitPrice && +exitPrice > 0) {
-          this.form.get("exitPrice")?.setValue(exitPrice, { emitEvent: true });
-        }
-      });
   }
 
   get f() {
@@ -1038,11 +867,6 @@ export class TradeFormComponent implements OnInit {
     const risk = Math.abs(entry - sl);
     const reward = Math.abs(target - entry);
     return risk > 0 ? reward / risk : null;
-  }
-
-  isExitPriceSet(): boolean {
-    const exit = this.form.get("exitPrice")?.value;
-    return exit != null && +exit > 0;
   }
 
   set(field: string, value: string) {
@@ -1061,42 +885,24 @@ export class TradeFormComponent implements OnInit {
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
-      const invalidFields = Object.keys(this.form.controls).filter(
-        (k) => this.form.controls[k].invalid && this.form.controls[k].enabled,
-      );
-      this.apiError.set(
-        "Please fill required fields: " + invalidFields.join(", "),
-      );
       return;
     }
 
     this.loading.set(true);
-
-    // getRawValue() includes disabled fields (outcomeTag when auto-locked)
-    const rawValue = this.form.getRawValue();
-    const payload = {
-      ...rawValue,
-      tags: this.selectedTags(),
-      slRespected: rawValue.slRespected ?? true,
-    };
+    const payload = { ...this.form.value, tags: this.selectedTags() };
 
     this.tradeService.createTrade(payload).subscribe({
       next: (trade) => {
         this.loading.set(false);
-        this.router.navigateByUrl("/trades/" + trade.id, { replaceUrl: true });
+        this.router.navigate(["/trades", trade.id]);
       },
       error: (err) => {
         this.loading.set(false);
         const body = err.error;
-        if (body?.fieldErrors) {
-          const msgs = Object.entries(body.fieldErrors)
-            .map(([f, m]) => `${f}: ${m}`)
-            .join(" | ");
-          this.apiError.set(msgs);
-        } else if (body?.details?.length) {
+        if (body?.details?.length) {
           this.apiError.set(body.details.join(" | "));
         } else {
-          this.apiError.set(body?.message || "Failed to save trade");
+          this.apiError.set(body?.message || "An error occurred");
         }
       },
     });
