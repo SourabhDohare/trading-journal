@@ -72,7 +72,6 @@ import {
           <option value="breached">SL Breached</option>
           <option value="respected">SL Respected</option>
         </select>
-        // ADD ✓ — two separate filters: instrument type dropdown + instrument
         text search
         <select
           [(ngModel)]="filters.instrumentType"
