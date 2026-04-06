@@ -13,6 +13,11 @@ spring:
       database: trading_journal
       auto-index-creation: false
 
+  # ADD THESE to make startup faster
+  main:
+    lazy-initialization: true   # ← beans initialize on first use, not at startup
+
+    
   servlet:
     multipart:
       max-file-size: 10MB
