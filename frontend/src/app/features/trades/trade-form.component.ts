@@ -15,7 +15,9 @@ import { TradeService } from '../../core/services/trade.service';
         <div>
           <a routerLink="/trades" class="back-link">← Back to Journal</a>
           <h1 class="page-title">Log New Trade</h1>
-          <p class="page-subtitle warning-text" *ngIf="strictMode()">⚡ Strict Mode Active — Incomplete entries will be rejected</p>
+          <p class="page-subtitle warning-text" *ngIf="strictMode()">
+            ⚡ Strict Mode Active — Incomplete entries will be rejected
+          </p>
         </div>
       </div>
 
@@ -46,18 +48,23 @@ import { TradeService } from '../../core/services/trade.service';
             <div class="form-group">
               <label>Trade Type *</label>
               <div class="toggle-group">
-                <button type="button" *ngFor="let t of ['INTRADAY','SWING','POSITIONAL']"
-                  [class.active]="form.get('tradeType')?.value===t"
-                  (click)="set('tradeType',t)" class="toggle-btn">{{ t }}</button>
+                <button type="button"
+                  *ngFor="let t of ['INTRADAY','SWING','POSITIONAL']"
+                  [class.active]="form.get('tradeType')?.value === t"
+                  (click)="set('tradeType', t)" class="toggle-btn">
+                  {{ t }}
+                </button>
               </div>
             </div>
             <div class="form-group">
               <label>Direction *</label>
               <div class="toggle-group">
-                <button type="button" [class.active-buy]="form.get('direction')?.value==='BUY'"
-                  (click)="set('direction','BUY')" class="toggle-btn buy">BUY ↑</button>
-                <button type="button" [class.active-sell]="form.get('direction')?.value==='SELL'"
-                  (click)="set('direction','SELL')" class="toggle-btn sell">SELL ↓</button>
+                <button type="button"
+                  [class.active-buy]="form.get('direction')?.value === 'BUY'"
+                  (click)="set('direction', 'BUY')" class="toggle-btn buy">BUY ↑</button>
+                <button type="button"
+                  [class.active-sell]="form.get('direction')?.value === 'SELL'"
+                  (click)="set('direction', 'SELL')" class="toggle-btn sell">SELL ↓</button>
               </div>
             </div>
             <div class="form-group">
@@ -74,8 +81,13 @@ import { TradeService } from '../../core/services/trade.service';
               <input type="number" formControlName="target" placeholder="0.00" class="form-input" step="0.05" />
             </div>
             <div class="form-group">
-              <label>Exit Price <span class="hint">If closed</span></label>
-              <input type="number" formControlName="exitPrice" placeholder="0.00" class="form-input" step="0.05" />
+              <label>
+                Exit Price
+                <span class="hint" *ngIf="!isExitPriceSet()">Leave blank if trade still open</span>
+                <span class="hint-green" *ngIf="isExitPriceSet()">✓ Trade will be marked closed</span>
+              </label>
+              <input type="number" formControlName="exitPrice" placeholder="0.00" class="form-input"
+                     [class.exit-set]="isExitPriceSet()" step="0.05" />
             </div>
             <div class="form-group">
               <label>Position Size * <span class="hint">Shares/Contracts</span></label>
@@ -152,7 +164,7 @@ import { TradeService } from '../../core/services/trade.service';
             <label>Why did you take this trade? * <span class="hint">Be specific. "It looked good" is not acceptable.</span></label>
             <textarea formControlName="whyTookTrade" rows="3" class="form-textarea"
               placeholder="e.g. Price broke above 20-day resistance at 18450 with 2.5x average volume. RSI was 58 — not overbought. FII data showed net buying of ₹2300cr yesterday..."></textarea>
-            <div class="char-count" [class.warn]="(f['whyTookTrade'].value?.length||0) < 30">
+            <div class="char-count" [class.warn]="(f['whyTookTrade'].value?.length || 0) < 30">
               {{ f['whyTookTrade'].value?.length || 0 }} chars (min 20)
             </div>
           </div>
@@ -179,38 +191,59 @@ import { TradeService } from '../../core/services/trade.service';
             <label>Emotional State Before Entry * <span class="hint">Be honest — this data is for your benefit</span></label>
             <div class="emotion-grid">
               <button type="button" *ngFor="let e of emotionOptions"
-                [class.active]="form.get('emotionalState')?.value===e.value"
+                [class.active]="form.get('emotionalState')?.value === e.value"
                 [class]="'emotion-btn ' + e.cls"
                 (click)="set('emotionalState', e.value)">
                 {{ e.icon }} {{ e.label }}
               </button>
             </div>
-            <div class="emotion-warn" *ngIf="form.get('emotionalState')?.value==='FOMO'">
+            <div class="emotion-warn" *ngIf="form.get('emotionalState')?.value === 'FOMO'">
               ⚠ FOMO trades statistically underperform by 40%. Are you sure?
             </div>
-            <div class="emotion-warn danger" *ngIf="form.get('emotionalState')?.value==='REVENGE'">
+            <div class="emotion-warn danger" *ngIf="form.get('emotionalState')?.value === 'REVENGE'">
               ✖ Revenge trading is a capital destruction pattern. Consider waiting.
             </div>
           </div>
         </div>
 
-        <!-- Section 4: Outcome (if trade is already closed) -->
+        <!-- Section 4: Outcome & Tags -->
         <div class="form-section">
           <h2 class="section-title">Outcome & Tags</h2>
           <div class="form-grid">
+
+            <!-- Outcome — auto-disabled when exit price is set -->
             <div class="form-group">
-              <label>Outcome</label>
-              <select formControlName="outcomeTag" class="form-select">
-                <option value="OPEN">Still Open</option>
-                <option value="PROFIT">Profit</option>
-                <option value="LOSS">Loss</option>
-                <option value="BREAKEVEN">Breakeven</option>
-                <option value="NO_TRADE">No Trade Taken</option>
-              </select>
+              <label>
+                Outcome
+                <span class="hint" *ngIf="!isExitPriceSet()">Select if trade is closed</span>
+                <span class="hint-green" *ngIf="isExitPriceSet()">Auto-calculated from exit price</span>
+              </label>
+              <div class="outcome-wrapper">
+                <select formControlName="outcomeTag" class="form-select"
+                        [class.auto-calculated]="isExitPriceSet()">
+                  <option value="OPEN">Still Open</option>
+                  <option value="PROFIT">Profit</option>
+                  <option value="LOSS">Loss</option>
+                  <option value="BREAKEVEN">Breakeven</option>
+                  <option value="NO_TRADE">No Trade Taken</option>
+                </select>
+                <!-- Lock overlay when auto-calculated -->
+                <div class="outcome-lock" *ngIf="isExitPriceSet()">
+                  <span class="lock-icon">🔒</span>
+                  <span class="lock-text">{{ form.getRawValue().outcomeTag }}</span>
+                </div>
+              </div>
+              <span class="auto-badge" *ngIf="isExitPriceSet()">
+                ✓ Auto-set — {{ form.getRawValue().outcomeTag }} based on exit price
+              </span>
             </div>
+
             <div class="form-group">
-              <label>P&L (₹)</label>
-              <input type="number" formControlName="pnlAbsolute" placeholder="Auto-calculated if entry/exit set" class="form-input" />
+              <label>P&L (₹) <span class="hint" *ngIf="isExitPriceSet()">Auto-calculated</span></label>
+              <input type="number" formControlName="pnlAbsolute"
+                     [placeholder]="isExitPriceSet() ? 'Calculated on save' : 'Enter manually if known'"
+                     class="form-input"
+                     [class.auto-calculated]="isExitPriceSet()" />
             </div>
             <div class="form-group">
               <label>Brokerage (₹)</label>
@@ -233,7 +266,8 @@ import { TradeService } from '../../core/services/trade.service';
 
           <div class="form-group full-width">
             <label>Notes / Chart Description</label>
-            <textarea formControlName="notes" rows="2" class="form-textarea" placeholder="Additional context, chart observations..."></textarea>
+            <textarea formControlName="notes" rows="2" class="form-textarea"
+              placeholder="Additional context, chart observations..."></textarea>
           </div>
 
           <div class="form-group sl-check">
@@ -263,7 +297,8 @@ import { TradeService } from '../../core/services/trade.service';
   `,
   styles: [`
     .page { padding: 32px; max-width: 900px; }
-    .back-link { color: #64748b; text-decoration: none; font-size: 13px; display: block; margin-bottom: 8px; &:hover { color: #3b82f6; } }
+    .back-link { color: #64748b; text-decoration: none; font-size: 13px; display: block; margin-bottom: 8px; }
+    .back-link:hover { color: #3b82f6; }
     .page-title { font-size: 26px; font-weight: 700; color: #e2e8f0; margin: 0 0 4px; }
     .page-subtitle { margin: 0; font-size: 13px; }
     .warning-text { color: #f59e0b; }
@@ -271,92 +306,174 @@ import { TradeService } from '../../core/services/trade.service';
     .trade-form { display: flex; flex-direction: column; gap: 24px; margin-top: 24px; }
 
     .form-section {
-      background: #0d1117;
-      border: 1px solid #1e2433;
-      border-radius: 12px;
-      padding: 24px;
+      background: #0d1117; border: 1px solid #1e2433;
+      border-radius: 12px; padding: 24px;
     }
-    .thinking-section { border-color: #3b82f6; border-width: 1px; }
+    .thinking-section { border-color: #3b82f6; }
 
     .section-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      margin: 0 0 20px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
+      font-size: 14px; font-weight: 700; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin: 0 0 20px; display: flex; align-items: center; gap: 12px;
     }
-    .mandatory-badge { font-size: 10px; background: rgba(59,130,246,0.15); color: #3b82f6; padding: 3px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .mandatory-badge {
+      font-size: 10px; background: rgba(59,130,246,0.15);
+      color: #3b82f6; padding: 3px 8px; border-radius: 4px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
 
     .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
     .form-group { display: flex; flex-direction: column; gap: 6px; }
     .form-group.full-width { grid-column: 1 / -1; }
 
-    label { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+    label {
+      font-size: 12px; font-weight: 600; color: #64748b;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
     .hint { font-size: 11px; color: #475569; text-transform: none; font-weight: 400; letter-spacing: 0; }
+    .hint-green { font-size: 11px; color: #22c55e; text-transform: none; font-weight: 600; letter-spacing: 0; }
 
     .form-input, .form-select, .form-textarea {
-      background: #0a0e1a;
-      border: 1px solid #1e2433;
-      border-radius: 8px;
-      color: #e2e8f0;
-      padding: 10px 12px;
-      font-size: 14px;
-      outline: none;
+      background: #0a0e1a; border: 1px solid #1e2433;
+      border-radius: 8px; color: #e2e8f0;
+      padding: 10px 12px; font-size: 14px; outline: none;
       transition: border-color 0.15s;
-      &:focus { border-color: #3b82f6; }
-      &::placeholder { color: #334155; }
     }
+    .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: #3b82f6; }
+    .form-input::placeholder, .form-textarea::placeholder { color: #334155; }
     .form-textarea { resize: vertical; min-height: 80px; font-family: inherit; line-height: 1.5; }
     .sl-input { border-color: #f59e0b !important; }
 
-    .char-count { font-size: 11px; color: #475569; text-align: right; &.warn { color: #ef4444; } }
+    /* Exit price set — green border to show trade is closed */
+    .form-input.exit-set { border-color: #22c55e !important; }
+
+    /* Auto-calculated outcome — green, locked appearance */
+    .form-select.auto-calculated {
+      border-color: #22c55e;
+      color: #22c55e;
+      opacity: 0.7;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    /* P&L auto-calculated */
+    .form-input.auto-calculated {
+      border-color: #1e2433;
+      color: #475569;
+      cursor: not-allowed;
+    }
+
+    /* Auto badge */
+    .auto-badge {
+      font-size: 11px;
+      color: #22c55e;
+      margin-top: 2px;
+      display: block;
+      font-weight: 600;
+    }
+
+    /* Outcome wrapper — positions the lock overlay */
+    .outcome-wrapper {
+      position: relative;
+    }
+    .outcome-wrapper .form-select {
+      width: 100%;
+    }
+
+    /* Lock overlay shown on top of disabled select */
+    .outcome-lock {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(34, 197, 94, 0.08);
+      border: 1px solid #22c55e;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      pointer-events: none;
+    }
+    .lock-icon { font-size: 14px; }
+    .lock-text { font-size: 14px; font-weight: 700; color: #22c55e; }
+
+    .char-count { font-size: 11px; color: #475569; text-align: right; }
+    .char-count.warn { color: #ef4444; }
 
     .toggle-group { display: flex; gap: 8px; }
     .toggle-btn {
-      flex: 1; padding: 9px 14px; background: #0a0e1a; border: 1px solid #1e2433;
-      border-radius: 8px; color: #64748b; font-size: 13px; font-weight: 600; cursor: pointer;
+      flex: 1; padding: 9px 14px; background: #0a0e1a;
+      border: 1px solid #1e2433; border-radius: 8px;
+      color: #64748b; font-size: 13px; font-weight: 600; cursor: pointer;
       transition: all 0.15s;
-      &.active { background: rgba(59,130,246,0.15); border-color: #3b82f6; color: #3b82f6; }
-      &.active-buy { background: rgba(34,197,94,0.12); border-color: #22c55e; color: #22c55e; }
-      &.active-sell { background: rgba(239,68,68,0.12); border-color: #ef4444; color: #ef4444; }
-      &.buy:hover { border-color: #22c55e; }
-      &.sell:hover { border-color: #ef4444; }
     }
+    .toggle-btn.active { background: rgba(59,130,246,0.15); border-color: #3b82f6; color: #3b82f6; }
+    .toggle-btn.active-buy { background: rgba(34,197,94,0.12); border-color: #22c55e; color: #22c55e; }
+    .toggle-btn.active-sell { background: rgba(239,68,68,0.12); border-color: #ef4444; color: #ef4444; }
+    .toggle-btn.buy:hover { border-color: #22c55e; }
+    .toggle-btn.sell:hover { border-color: #ef4444; }
 
     .emotion-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
     .emotion-btn {
       padding: 8px 12px; background: #0a0e1a; border: 1px solid #1e2433;
       border-radius: 8px; color: #64748b; font-size: 13px; cursor: pointer; transition: all 0.15s;
-      &.calm.active { background: rgba(34,197,94,0.1); border-color: #22c55e; color: #22c55e; }
-      &.fomo.active { background: rgba(245,158,11,0.1); border-color: #f59e0b; color: #f59e0b; }
-      &.revenge.active { background: rgba(239,68,68,0.1); border-color: #ef4444; color: #ef4444; }
-      &.hesitation.active { background: rgba(148,163,184,0.1); border-color: #94a3b8; color: #94a3b8; }
-      &.active { border-color: #3b82f6; }
     }
-    .emotion-warn { font-size: 12px; color: #f59e0b; margin-top: 6px; padding: 8px 12px; background: rgba(245,158,11,0.08); border-radius: 6px; border-left: 2px solid #f59e0b; &.danger { color: #ef4444; background: rgba(239,68,68,0.08); border-left-color: #ef4444; } }
+    .emotion-btn.calm.active { background: rgba(34,197,94,0.1); border-color: #22c55e; color: #22c55e; }
+    .emotion-btn.fomo.active { background: rgba(245,158,11,0.1); border-color: #f59e0b; color: #f59e0b; }
+    .emotion-btn.revenge.active { background: rgba(239,68,68,0.1); border-color: #ef4444; color: #ef4444; }
+    .emotion-btn.hesitation.active { background: rgba(148,163,184,0.1); border-color: #94a3b8; color: #94a3b8; }
+    .emotion-btn.active { border-color: #3b82f6; }
+    .emotion-warn {
+      font-size: 12px; color: #f59e0b; margin-top: 6px;
+      padding: 8px 12px; background: rgba(245,158,11,0.08);
+      border-radius: 6px; border-left: 2px solid #f59e0b;
+    }
+    .emotion-warn.danger { color: #ef4444; background: rgba(239,68,68,0.08); border-left-color: #ef4444; }
 
     .tags-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-    .tag-btn { padding: 5px 12px; background: #0a0e1a; border: 1px solid #1e2433; border-radius: 20px; color: #64748b; font-size: 12px; cursor: pointer; transition: all 0.15s; &.active { background: rgba(139,92,246,0.1); border-color: #8b5cf6; color: #a78bfa; } }
+    .tag-btn {
+      padding: 5px 12px; background: #0a0e1a; border: 1px solid #1e2433;
+      border-radius: 20px; color: #64748b; font-size: 12px; cursor: pointer; transition: all 0.15s;
+    }
+    .tag-btn.active { background: rgba(139,92,246,0.1); border-color: #8b5cf6; color: #a78bfa; }
 
-    .rr-preview { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 12px 16px; background: #0a0e1a; border-radius: 8px; border: 1px solid #1e2433; }
+    .rr-preview {
+      display: flex; align-items: center; gap: 12px; margin-top: 16px;
+      padding: 12px 16px; background: #0a0e1a; border-radius: 8px; border: 1px solid #1e2433;
+    }
     .rr-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-    .rr-value { font-size: 20px; font-weight: 700; &.rr-good { color: #22c55e; } &.rr-bad { color: #ef4444; } }
+    .rr-value { font-size: 20px; font-weight: 700; }
+    .rr-value.rr-good { color: #22c55e; }
+    .rr-value.rr-bad { color: #ef4444; }
     .rr-warn { font-size: 12px; color: #f59e0b; }
 
     .sl-check { flex-direction: row; align-items: flex-start; gap: 12px; }
-    .checkbox-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #94a3b8; text-transform: none; letter-spacing: 0; font-weight: 400; input { width: 16px; height: 16px; accent-color: #3b82f6; } }
+    .checkbox-label {
+      display: flex; align-items: center; gap: 8px; cursor: pointer;
+      font-size: 13px; color: #94a3b8; text-transform: none; letter-spacing: 0; font-weight: 400;
+    }
+    .checkbox-label input { width: 16px; height: 16px; accent-color: #3b82f6; }
     .sl-warn { font-size: 12px; color: #ef4444; margin-top: 6px; }
 
     .error { font-size: 11px; color: #ef4444; }
-    .error-summary { background: rgba(239,68,68,0.1); border: 1px solid #ef4444; border-radius: 8px; padding: 14px 16px; color: #f87171; font-size: 14px; }
+    .error-summary {
+      background: rgba(239,68,68,0.1); border: 1px solid #ef4444;
+      border-radius: 8px; padding: 14px 16px; color: #f87171; font-size: 14px;
+    }
 
     .form-actions { display: flex; gap: 12px; justify-content: flex-end; padding-top: 8px; }
-    .btn-primary { background: #3b82f6; color: #fff; padding: 12px 28px; border-radius: 8px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; &:hover { background: #2563eb; } &:disabled { opacity: 0.6; cursor: not-allowed; } }
-    .btn-ghost { background: none; border: 1px solid #1e2433; color: #64748b; padding: 12px 24px; border-radius: 8px; font-size: 15px; cursor: pointer; text-decoration: none; &:hover { border-color: #ef4444; color: #ef4444; } }
+    .btn-primary {
+      background: #3b82f6; color: #fff; padding: 12px 28px;
+      border-radius: 8px; border: none; font-size: 15px; font-weight: 600;
+      cursor: pointer; text-decoration: none;
+    }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-ghost {
+      background: none; border: 1px solid #1e2433; color: #64748b;
+      padding: 12px 24px; border-radius: 8px; font-size: 15px;
+      cursor: pointer; text-decoration: none;
+    }
+    .btn-ghost:hover { border-color: #ef4444; color: #ef4444; }
   `]
 })
 export class TradeFormComponent implements OnInit {
@@ -370,48 +487,93 @@ export class TradeFormComponent implements OnInit {
   availableTags = [
     '#HighConfidence', '#LowConfidence', '#DisciplineBreak', '#FOMO',
     '#PerfectExecution', '#EarlyExit', '#Overtrading', '#HighRR',
-    '#Revenge', '#PatientEntry', '#GoodProcess', '#NewsPlay'
+    '#Revenge', '#PatientEntry', '#GoodProcess', '#NewsPlay',
   ];
 
   emotionOptions = [
-    { value: 'CALM', label: 'Calm', icon: '◎', cls: 'calm' },
-    { value: 'DISCIPLINED', label: 'Disciplined', icon: '✓', cls: 'calm' },
-    { value: 'HESITATION', label: 'Hesitation', icon: '?', cls: 'hesitation' },
-    { value: 'FOMO', label: 'FOMO', icon: '⚡', cls: 'fomo' },
-    { value: 'OVERCONFIDENT', label: 'Overconfident', icon: '↑', cls: 'hesitation' },
-    { value: 'REVENGE', label: 'Revenge', icon: '✖', cls: 'revenge' },
-    { value: 'ANXIOUS', label: 'Anxious', icon: '~', cls: 'hesitation' },
+    { value: 'CALM',         label: 'Calm',         icon: '◎', cls: 'calm' },
+    { value: 'DISCIPLINED',  label: 'Disciplined',  icon: '✓', cls: 'calm' },
+    { value: 'HESITATION',   label: 'Hesitation',   icon: '?', cls: 'hesitation' },
+    { value: 'FOMO',         label: 'FOMO',         icon: '⚡', cls: 'fomo' },
+    { value: 'OVERCONFIDENT',label: 'Overconfident',icon: '↑', cls: 'hesitation' },
+    { value: 'REVENGE',      label: 'Revenge',      icon: '✖', cls: 'revenge' },
+    { value: 'ANXIOUS',      label: 'Anxious',      icon: '~', cls: 'hesitation' },
   ];
 
-  constructor(private fb: FormBuilder, private tradeService: TradeService, private router: Router) {}
+  constructor(
+    private fb: FormBuilder,
+    private tradeService: TradeService,
+    private router: Router
+  ) {}
 
   ngOnInit() {
     this.form = this.fb.group({
-      instrument: ['', Validators.required],
-      instrumentType: ['', Validators.required],
-      tradeType: ['INTRADAY', Validators.required],
-      direction: ['BUY', Validators.required],
-      entryPrice: [null, [Validators.required, Validators.min(0.01)]],
-      exitPrice: [null],
-      stopLoss: [null, [Validators.required, Validators.min(0.01)]],
-      target: [null, [Validators.required, Validators.min(0.01)]],
-      positionSize: [null, [Validators.required, Validators.min(1)]],
-      lotSize: [null],
+      instrument:          ['', Validators.required],
+      instrumentType:      ['', Validators.required],
+      tradeType:           ['INTRADAY', Validators.required],
+      direction:           ['BUY', Validators.required],
+      entryPrice:          [null, [Validators.required, Validators.min(0.01)]],
+      exitPrice:           [null],
+      stopLoss:            [null, [Validators.required, Validators.min(0.01)]],
+      target:              [null, [Validators.required, Validators.min(0.01)]],
+      positionSize:        [null, [Validators.required, Validators.min(1)]],
+      lotSize:             [null],
       riskPerTradePercent: [null],
-      exchange: [''],
-      setupType: ['', Validators.required],
-      marketContext: ['', Validators.required],
-      whyTookTrade: ['', [Validators.required, Validators.minLength(20)]],
-      edgeOrSetupLogic: ['', [Validators.required, Validators.minLength(20)]],
-      confirmationUsed: ['', Validators.required],
-      invalidationReason: ['', Validators.required],
-      emotionalState: ['CALM', Validators.required],
-      outcomeTag: ['OPEN'],
-      pnlAbsolute: [null],
-      brokerage: [null],
-      taxes: [null],
-      notes: [''],
-      slRespected: [true],
+      exchange:            [''],
+      setupType:           ['', Validators.required],
+      marketContext:       ['', Validators.required],
+      whyTookTrade:        ['', [Validators.required, Validators.minLength(20)]],
+      edgeOrSetupLogic:    ['', [Validators.required, Validators.minLength(20)]],
+      confirmationUsed:    ['', Validators.required],
+      invalidationReason:  ['', Validators.required],
+      emotionalState:      ['CALM', Validators.required],
+      outcomeTag:          ['OPEN'],
+      pnlAbsolute:         [null],
+      brokerage:           [null],
+      taxes:               [null],
+      notes:               [''],
+      slRespected:         [true],
+    });
+
+    // Watch exit price — auto-set and lock outcome dropdown
+    this.form.get('exitPrice')?.valueChanges.subscribe(exitPrice => {
+      const outcomeControl = this.form.get('outcomeTag');
+      if (exitPrice && +exitPrice > 0) {
+        const entry = +this.form.get('entryPrice')?.value || 0;
+        const direction = this.form.get('direction')?.value;
+        if (entry > 0) {
+          const priceDiff = direction === 'BUY'
+            ? +exitPrice - entry
+            : entry - +exitPrice;
+          if (priceDiff > 0) {
+            outcomeControl?.setValue('PROFIT');
+          } else if (priceDiff < 0) {
+            outcomeControl?.setValue('LOSS');
+          } else {
+            outcomeControl?.setValue('BREAKEVEN');
+          }
+        }
+        outcomeControl?.disable();
+      } else {
+        outcomeControl?.enable();
+        outcomeControl?.setValue('OPEN');
+      }
+    });
+
+    // Re-trigger outcome calculation if entry price changes after exit is already set
+    this.form.get('entryPrice')?.valueChanges.subscribe(() => {
+      const exitPrice = this.form.get('exitPrice')?.value;
+      if (exitPrice && +exitPrice > 0) {
+        this.form.get('exitPrice')?.setValue(exitPrice, { emitEvent: true });
+      }
+    });
+
+    // Re-trigger if direction changes after exit is set
+    this.form.get('direction')?.valueChanges.subscribe(() => {
+      const exitPrice = this.form.get('exitPrice')?.value;
+      if (exitPrice && +exitPrice > 0) {
+        this.form.get('exitPrice')?.setValue(exitPrice, { emitEvent: true });
+      }
     });
   }
 
@@ -427,6 +589,11 @@ export class TradeFormComponent implements OnInit {
     return risk > 0 ? reward / risk : null;
   }
 
+  isExitPriceSet(): boolean {
+    const exit = this.form.get('exitPrice')?.value;
+    return exit != null && +exit > 0;
+  }
+
   set(field: string, value: string) { this.form.get(field)?.setValue(value); }
 
   toggleTag(tag: string) {
@@ -435,51 +602,46 @@ export class TradeFormComponent implements OnInit {
     );
   }
 
-  // Replace the submit() method entirely
-submit() {
-  this.submitted = true;
-  this.apiError.set('');
+  submit() {
+    this.submitted = true;
+    this.apiError.set('');
 
-  if (this.form.invalid) {
-    this.form.markAllAsTouched();
-    // Show which fields are invalid
-    const invalidFields = Object.keys(this.form.controls)
-      .filter(key => this.form.controls[key].invalid);
-    this.apiError.set('Please fill required fields: ' + invalidFields.join(', '));
-    return;
-  }
-
-  this.loading.set(true);
-  const payload = { 
-    ...this.form.value, 
-    tags: this.selectedTags(),
-    slRespected: this.form.value.slRespected ?? true
-  };
-
-  console.log('Submitting trade payload:', payload); // debug
-
-  this.tradeService.createTrade(payload).subscribe({
-    next: (trade) => {
-      console.log('Trade saved:', trade);
-      this.loading.set(false);
-      this.router.navigateByUrl('/trades/' + trade.id, { replaceUrl: true });
-    },
-    error: (err) => {
-      this.loading.set(false);
-      console.error('Trade error:', err);
-      const body = err.error;
-      if (body?.fieldErrors) {
-        // Show field-level validation errors from backend
-        const msgs = Object.entries(body.fieldErrors)
-          .map(([f, m]) => `${f}: ${m}`)
-          .join(' | ');
-        this.apiError.set(msgs);
-      } else if (body?.details?.length) {
-        this.apiError.set(body.details.join(' | '));
-      } else {
-        this.apiError.set(body?.message || JSON.stringify(body) || 'Failed to save trade');
-      }
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      const invalidFields = Object.keys(this.form.controls)
+        .filter(k => this.form.controls[k].invalid && this.form.controls[k].enabled);
+      this.apiError.set('Please fill required fields: ' + invalidFields.join(', '));
+      return;
     }
-  });
-}
+
+    this.loading.set(true);
+
+    // getRawValue() includes disabled fields (outcomeTag when auto-locked)
+    const rawValue = this.form.getRawValue();
+    const payload = {
+      ...rawValue,
+      tags: this.selectedTags(),
+      slRespected: rawValue.slRespected ?? true
+    };
+
+    this.tradeService.createTrade(payload).subscribe({
+      next: (trade) => {
+        this.loading.set(false);
+        this.router.navigateByUrl('/trades/' + trade.id, { replaceUrl: true });
+      },
+      error: (err) => {
+        this.loading.set(false);
+        const body = err.error;
+        if (body?.fieldErrors) {
+          const msgs = Object.entries(body.fieldErrors)
+            .map(([f, m]) => `${f}: ${m}`).join(' | ');
+          this.apiError.set(msgs);
+        } else if (body?.details?.length) {
+          this.apiError.set(body.details.join(' | '));
+        } else {
+          this.apiError.set(body?.message || 'Failed to save trade');
+        }
+      }
+    });
+  }
 }

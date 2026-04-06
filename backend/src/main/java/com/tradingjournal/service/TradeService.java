@@ -217,7 +217,7 @@ public class TradeService {
     }
 
     private void calculateMetrics(Trade trade, TradeDTO.CreateRequest req) {
-        // Planned R:R
+        // Planned R:R — direction-aware
         if (req.getEntryPrice() != null && req.getStopLoss() != null && req.getTarget() != null) {
             BigDecimal risk = req.getEntryPrice().subtract(req.getStopLoss()).abs();
             BigDecimal reward = req.getTarget().subtract(req.getEntryPrice()).abs();
@@ -226,17 +226,22 @@ public class TradeService {
             }
         }
 
-        // Actual R:R and PnL if exit is known
-        if (req.getExitPrice() != null) {
-            recalculatePnl(trade);
+        // Risk per trade (absolute)
+        if (req.getEntryPrice() != null && req.getStopLoss() != null
+                && req.getPositionSize() != null) {
+            boolean isFnO = req.getInstrumentType() == Trade.InstrumentType.FO_FUTURES
+                    || req.getInstrumentType() == Trade.InstrumentType.FO_OPTIONS;
+            int effectiveLotSize = (isFnO && req.getLotSize() != null && req.getLotSize() > 0)
+                    ? req.getLotSize()
+                    : 1;
+            BigDecimal riskPerShare = req.getEntryPrice().subtract(req.getStopLoss()).abs();
+            trade.setRiskPerTradeAbsolute(riskPerShare.multiply(
+                    BigDecimal.valueOf((long) req.getPositionSize() * effectiveLotSize)));
         }
 
-        // Risk per trade
-        if (req.getEntryPrice() != null && req.getStopLoss() != null && req.getPositionSize() != null) {
-            BigDecimal riskPerShare = req.getEntryPrice().subtract(req.getStopLoss()).abs();
-            int lots = req.getLotSize() != null ? req.getLotSize() : 1;
-            trade.setRiskPerTradeAbsolute(
-                    riskPerShare.multiply(BigDecimal.valueOf((long) req.getPositionSize() * lots)));
+        // Auto-calculate PnL if exit price is provided
+        if (req.getExitPrice() != null) {
+            recalculatePnl(trade);
         }
     }
 
@@ -248,18 +253,21 @@ public class TradeService {
                 ? trade.getExitPrice().subtract(trade.getEntryPrice())
                 : trade.getEntryPrice().subtract(trade.getExitPrice());
 
-        // FIXED: only multiply by lotSize for F&O, otherwise lotSize = 1
-        int lotSize = 1;
-        if (trade.getLotSize() != null && trade.getLotSize() > 0
-                && (trade.getInstrumentType() == Trade.InstrumentType.FO_FUTURES
-                        || trade.getInstrumentType() == Trade.InstrumentType.FO_OPTIONS)) {
-            lotSize = trade.getLotSize();
-        }
+        // lotSize only applies to F&O instruments
+        // For STOCK, CRYPTO, INDEX, FOREX, COMMODITY — lotSize is ignored
+        boolean isFnO = trade.getInstrumentType() == Trade.InstrumentType.FO_FUTURES
+                || trade.getInstrumentType() == Trade.InstrumentType.FO_OPTIONS;
 
-        BigDecimal grossPnl = priceDiff.multiply(
-                BigDecimal.valueOf((long) trade.getPositionSize() * lotSize));
+        int effectiveLotSize = (isFnO && trade.getLotSize() != null && trade.getLotSize() > 0)
+                ? trade.getLotSize()
+                : 1;
 
-        // Deduct costs
+        BigDecimal totalQuantity = BigDecimal.valueOf(
+                (long) trade.getPositionSize() * effectiveLotSize);
+
+        BigDecimal grossPnl = priceDiff.multiply(totalQuantity);
+
+        // Deduct transaction costs
         BigDecimal costs = BigDecimal.ZERO;
         if (trade.getBrokerage() != null)
             costs = costs.add(trade.getBrokerage());
@@ -270,7 +278,7 @@ public class TradeService {
         trade.setPnlPercent(priceDiff.divide(trade.getEntryPrice(), 4, RoundingMode.HALF_UP)
                 .multiply(BigDecimal.valueOf(100)));
 
-        // Set outcome tag
+        // Auto-set outcome tag
         if (trade.getPnlAbsolute().compareTo(BigDecimal.ZERO) > 0) {
             trade.setOutcomeTag(Trade.OutcomeTag.PROFIT);
         } else if (trade.getPnlAbsolute().compareTo(BigDecimal.ZERO) < 0) {
