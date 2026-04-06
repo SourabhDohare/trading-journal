@@ -10,15 +10,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.TemporalAdjusters;
-import java.time.DayOfWeek;
 
 @RestController
 @RequestMapping("/reports")
 @RequiredArgsConstructor
-@Tag(name = "Reports", description = "Daily and weekly performance reports")
+@Tag(name = "Reports", description = "Daily, weekly, monthly, yearly performance reports")
 public class ReportController {
 
     private final AnalyticsService analyticsService;
@@ -27,14 +27,16 @@ public class ReportController {
     @Operation(summary = "Today's trading report")
     public ResponseEntity<AnalyticsDTO> dailyReport(@AuthenticationPrincipal UserPrincipal principal) {
         LocalDateTime start = LocalDate.now().atStartOfDay();
-        LocalDateTime end = LocalDate.now().atTime(23, 59, 59);
+        LocalDateTime end   = LocalDate.now().atTime(23, 59, 59);
         return ResponseEntity.ok(analyticsService.getAnalytics(principal.getId(), start, end));
     }
 
     @GetMapping("/weekly")
-    @Operation(summary = "This week's trading report")
+    @Operation(summary = "This week's trading report (Mon–Sun)")
     public ResponseEntity<AnalyticsDTO> weeklyReport(@AuthenticationPrincipal UserPrincipal principal) {
-        LocalDateTime start = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).atStartOfDay();
+        LocalDateTime start = LocalDate.now()
+                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                .atStartOfDay();
         LocalDateTime end = LocalDateTime.now();
         return ResponseEntity.ok(analyticsService.getAnalytics(principal.getId(), start, end));
     }
@@ -43,7 +45,15 @@ public class ReportController {
     @Operation(summary = "This month's trading report")
     public ResponseEntity<AnalyticsDTO> monthlyReport(@AuthenticationPrincipal UserPrincipal principal) {
         LocalDateTime start = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime end   = LocalDateTime.now();
+        return ResponseEntity.ok(analyticsService.getAnalytics(principal.getId(), start, end));
+    }
+
+    @GetMapping("/yearly")
+    @Operation(summary = "This year's trading report")
+    public ResponseEntity<AnalyticsDTO> yearlyReport(@AuthenticationPrincipal UserPrincipal principal) {
+        LocalDateTime start = LocalDate.now().withDayOfYear(1).atStartOfDay();
+        LocalDateTime end   = LocalDateTime.now();
         return ResponseEntity.ok(analyticsService.getAnalytics(principal.getId(), start, end));
     }
 
@@ -54,7 +64,7 @@ public class ReportController {
             @RequestParam String from,
             @RequestParam String to) {
         LocalDateTime start = LocalDate.parse(from).atStartOfDay();
-        LocalDateTime end = LocalDate.parse(to).atTime(23, 59, 59);
+        LocalDateTime end   = LocalDate.parse(to).atTime(23, 59, 59);
         return ResponseEntity.ok(analyticsService.getAnalytics(principal.getId(), start, end));
     }
 }

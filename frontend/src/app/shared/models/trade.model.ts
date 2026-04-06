@@ -8,6 +8,14 @@ export type SetupType = 'BREAKOUT' | 'REVERSAL' | 'PULLBACK' | 'TREND_FOLLOW' | 
 export type MarketContext = 'TRENDING_UP' | 'TRENDING_DOWN' | 'RANGING' | 'VOLATILE' | 'NEWS_DRIVEN' | 'CONSOLIDATION';
 export type EmotionalState = 'CALM' | 'FOMO' | 'REVENGE' | 'HESITATION' | 'OVERCONFIDENT' | 'ANXIOUS' | 'DISCIPLINED';
 
+// Available time frames
+export const TIME_FRAMES = [
+  '1min', '3min', '5min', '10min', '15min', '30min',
+  '45min', '90min', '1hr', '2hr', '4hr', '6hr', '12hr',
+  '1day', '1week'
+] as const;
+export type TimeFrame = typeof TIME_FRAMES[number];
+
 export interface Trade {
   id: string;
   tradeId: string;
@@ -31,6 +39,7 @@ export interface Trade {
   actualRR?: number;
   setupType: SetupType;
   marketContext: MarketContext;
+  timeFrames?: string[];          // multi-select time frames
   whyTookTrade: string;
   edgeOrSetupLogic: string;
   confirmationUsed: string;
@@ -42,7 +51,7 @@ export interface Trade {
   willAvoid?: string;
   disciplineScore?: number;
   tags: string[];
-  chartImageUrls?: string[];
+  chartImageUrls?: string[];      // base64 or URLs, max 5
   notes?: string;
   exchange?: string;
   brokerage?: number;
@@ -69,6 +78,7 @@ export interface CreateTradeRequest {
   riskPerTradePercent?: number;
   setupType: SetupType;
   marketContext: MarketContext;
+  timeFrames?: string[];
   whyTookTrade: string;
   edgeOrSetupLogic: string;
   confirmationUsed: string;
@@ -83,16 +93,18 @@ export interface CreateTradeRequest {
   brokerage?: number;
   taxes?: number;
   slRespected?: boolean;
+  chartImageUrls?: string[];
 }
 
 export interface TradeQuery {
   instrument?: string;
-  instrumentType?: InstrumentType; 
+  instrumentType?: InstrumentType;
   outcomeTag?: OutcomeTag;
   emotionalState?: EmotionalState;
   setupType?: SetupType;
   tradeType?: TradeType;
   tags?: string[];
+  timeFrames?: string[];
   minRR?: number;
   slRespected?: boolean;
   dateFrom?: string;

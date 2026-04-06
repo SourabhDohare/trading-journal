@@ -28,55 +28,58 @@ public class Trade {
     private String userId;
 
     // ─── Core Trade Data ───────────────────────────────────────
-    private String tradeId;           // Human-readable ID e.g. TRD-2024-001
+    private String tradeId;
     private LocalDateTime tradeDate;
     private LocalDateTime exitDate;
 
-    private String instrument;        // NIFTY, BANKNIFTY, RELIANCE, BTC, etc.
-    private InstrumentType instrumentType; // STOCK, CRYPTO, FO_FUTURES, FO_OPTIONS, FOREX
-
-    private TradeType tradeType;      // INTRADAY, SWING, POSITIONAL
-    private Direction direction;      // BUY, SELL
+    private String instrument;
+    private InstrumentType instrumentType;
+    private TradeType tradeType;
+    private Direction direction;
 
     private BigDecimal entryPrice;
     private BigDecimal exitPrice;
     private BigDecimal stopLoss;
     private BigDecimal target;
 
-    private Integer positionSize;     // Number of shares/contracts/lots
-    private Integer lotSize;          // Lot size for F&O
+    private Integer positionSize;
+    private Integer lotSize;
     private BigDecimal riskPerTradePercent;
     private BigDecimal riskPerTradeAbsolute;
 
-    private OutcomeTag outcomeTag;    // PROFIT, LOSS, BREAKEVEN, NO_TRADE
+    private OutcomeTag outcomeTag;
     private BigDecimal pnlAbsolute;
     private BigDecimal pnlPercent;
-    private BigDecimal plannedRR;     // Planned Risk:Reward
-    private BigDecimal actualRR;      // Actual Risk:Reward
+    private BigDecimal plannedRR;
+    private BigDecimal actualRR;
 
     // ─── Setup & Context ──────────────────────────────────────
-    private SetupType setupType;      // BREAKOUT, REVERSAL, PULLBACK, TREND_FOLLOW, etc.
-    private MarketContext marketContext; // TRENDING, RANGING, VOLATILE, NEWS_DRIVEN
+    private SetupType setupType;
+    private MarketContext marketContext;
+
+    // ─── Time Frames (NEW) ────────────────────────────────────
+    // Multiple time frames can be selected per trade
+    private List<String> timeFrames;
 
     // ─── Mandatory Thinking Layer ─────────────────────────────
     private String whyTookTrade;
     private String edgeOrSetupLogic;
     private String confirmationUsed;
     private String invalidationReason;
-    private EmotionalState emotionalState; // CALM, FOMO, REVENGE, HESITATION, OVERCONFIDENT
+    private EmotionalState emotionalState;
 
     // ─── Post-Trade Reflection ────────────────────────────────
     private String whatWentRight;
     private String whatWentWrong;
     private String willRepeat;
     private String willAvoid;
-    private Integer disciplineScore; // 1-10
+    private Integer disciplineScore;
 
     // ─── Tags ─────────────────────────────────────────────────
-    private List<String> tags; // #HighConfidence, #DisciplineBreak, #FOMO, etc.
+    private List<String> tags;
 
-    // ─── Media ────────────────────────────────────────────────
-    private List<String> chartImageUrls; // S3/local paths
+    // ─── Media (Base64 encoded, max 5 images) ─────────────────
+    private List<String> chartImageUrls;   // S3/local paths OR base64 strings
     private String notes;
 
     // ─── Broker Integration ───────────────────────────────────

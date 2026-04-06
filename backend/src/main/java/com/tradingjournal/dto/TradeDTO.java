@@ -56,6 +56,9 @@ public class TradeDTO {
         @NotNull(message = "Market context is required")
         private Trade.MarketContext marketContext;
 
+        // Time frames — multi-select, optional
+        private List<String> timeFrames;
+
         @NotBlank(message = "Explain why you took this trade — vague reasoning is not accepted")
         @Size(min = 20, message = "Be specific — minimum 20 characters. Justify your decision.")
         private String whyTookTrade;
@@ -83,6 +86,9 @@ public class TradeDTO {
         private BigDecimal brokerage;
         private BigDecimal taxes;
         private boolean slRespected = true;
+
+        // Chart images — base64 encoded strings, max 5
+        private List<String> chartImageUrls;
     }
 
     @Data
@@ -98,9 +104,12 @@ public class TradeDTO {
         private String willAvoid;
         private Integer disciplineScore;
         private List<String> tags;
+        private List<String> timeFrames;
         private String notes;
         private boolean slRespected;
         private boolean isReviewed;
+        // Chart images can be updated too
+        private List<String> chartImageUrls;
     }
 
     // ─── Response DTOs ────────────────────────────────────────
@@ -129,6 +138,7 @@ public class TradeDTO {
         private BigDecimal actualRR;
         private Trade.SetupType setupType;
         private Trade.MarketContext marketContext;
+        private List<String> timeFrames;           // NEW
         private String whyTookTrade;
         private String edgeOrSetupLogic;
         private String confirmationUsed;
@@ -140,7 +150,7 @@ public class TradeDTO {
         private String willAvoid;
         private Integer disciplineScore;
         private List<String> tags;
-        private List<String> chartImageUrls;
+        private List<String> chartImageUrls;       // base64 or URLs
         private String notes;
         private String exchange;
         private BigDecimal brokerage;
@@ -156,19 +166,19 @@ public class TradeDTO {
     @Data
     public static class QueryRequest {
         private String instrument;
-        // Add to TradeDTO.QueryRequest class
         private Trade.InstrumentType instrumentType;
         private Trade.OutcomeTag outcomeTag;
         private Trade.EmotionalState emotionalState;
         private Trade.SetupType setupType;
         private Trade.TradeType tradeType;
         private List<String> tags;
+        private List<String> timeFrames;
         private Double minRR;
         private Boolean slRespected;
         private LocalDateTime dateFrom;
         private LocalDateTime dateTo;
         private Integer limit;
-        private String sortBy; // tradeDate, pnlAbsolute, actualRR
-        private String sortDir; // asc, desc
+        private String sortBy;
+        private String sortDir;
     }
 }

@@ -60,9 +60,23 @@ export class TradeService {
     return this.http.get<Analytics>(`${environment.apiUrl}/reports/monthly`);
   }
 
+  getYearlyReport(): Observable<Analytics> {
+    return this.http.get<Analytics>(`${environment.apiUrl}/reports/yearly`);
+  }
+
   getCustomReport(from: string, to: string): Observable<Analytics> {
     return this.http.get<Analytics>(`${environment.apiUrl}/reports/custom`, {
       params: new HttpParams().set('from', from).set('to', to)
+    });
+  }
+
+  // Get trades for a specific date range (for reports trade list)
+  getTradesInRange(from: string, to: string): Observable<Trade[]> {
+    return this.http.post<Trade[]>(`${this.base}/query`, {
+      dateFrom: from + 'T00:00:00',
+      dateTo: to + 'T23:59:59',
+      sortBy: 'tradeDate',
+      sortDir: 'desc'
     });
   }
 }

@@ -64,6 +64,12 @@ public class TradeService {
             trade.setExitDate(request.getExitDate() != null ? request.getExitDate() : LocalDateTime.now());
             recalculatePnl(trade);
         }
+        if (request.getTimeFrames() != null) trade.setTimeFrames(request.getTimeFrames());
+        if (request.getChartImageUrls() != null) {
+            List<String> imgs = request.getChartImageUrls();
+            if (imgs.size() > 5) imgs = imgs.subList(0, 5);
+            trade.setChartImageUrls(imgs);
+        }
 
         if (request.getOutcomeTag() != null)
             trade.setOutcomeTag(request.getOutcomeTag());
@@ -160,7 +166,14 @@ public class TradeService {
 
     private Trade buildTrade(String userId, TradeDTO.CreateRequest req) {
         long count = tradeRepository.countByUserId(userId);
-        String tradeId = "TRD-" + LocalDateTime.now().format(TRADE_ID_FORMAT) + "-" + String.format("%04d", count + 1);
+        String tradeId = "TRD-" + LocalDateTime.now().format(TRADE_ID_FORMAT)
+                + "-" + String.format("%04d", count + 1);
+
+        // Validate chart images — max 5
+        List<String> chartImages = req.getChartImageUrls();
+        if (chartImages != null && chartImages.size() > 5) {
+            chartImages = chartImages.subList(0, 5);
+        }
 
         Trade trade = Trade.builder()
                 .tradeId(tradeId)
@@ -180,6 +193,7 @@ public class TradeService {
                 .riskPerTradePercent(req.getRiskPerTradePercent())
                 .setupType(req.getSetupType())
                 .marketContext(req.getMarketContext())
+                .timeFrames(req.getTimeFrames() != null ? new ArrayList<>(req.getTimeFrames()) : new ArrayList<>())
                 .whyTookTrade(req.getWhyTookTrade())
                 .edgeOrSetupLogic(req.getEdgeOrSetupLogic())
                 .confirmationUsed(req.getConfirmationUsed())
@@ -194,13 +208,12 @@ public class TradeService {
                 .brokerage(req.getBrokerage())
                 .taxes(req.getTaxes())
                 .slRespected(req.isSlRespected())
+                .chartImageUrls(chartImages != null ? new ArrayList<>(chartImages) : new ArrayList<>())
                 .build();
 
-        // ← ADD THIS BLOCK after .build()
-        // Auto-set outcomeTag based on exit price and PnL
+        // Auto-set outcomeTag when exit price provided
         if (req.getExitPrice() != null) {
             if (req.getPnlAbsolute() != null) {
-                // User manually provided PnL
                 if (req.getPnlAbsolute().compareTo(BigDecimal.ZERO) > 0) {
                     trade.setOutcomeTag(Trade.OutcomeTag.PROFIT);
                 } else if (req.getPnlAbsolute().compareTo(BigDecimal.ZERO) < 0) {
@@ -209,8 +222,6 @@ public class TradeService {
                     trade.setOutcomeTag(Trade.OutcomeTag.BREAKEVEN);
                 }
             }
-            // If no manual PnL provided, calculateMetrics() will call recalculatePnl()
-            // which will set the outcomeTag automatically
         }
 
         return trade;
@@ -385,6 +396,7 @@ public class TradeService {
         resp.setReviewed(trade.isReviewed());
         resp.setCreatedAt(trade.getCreatedAt());
         resp.setUpdatedAt(trade.getUpdatedAt());
+        resp.setTimeFrames(trade.getTimeFrames());
         return resp;
     }
 }

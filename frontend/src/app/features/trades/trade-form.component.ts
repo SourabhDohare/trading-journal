@@ -10,6 +10,7 @@ import {
 } from "@angular/forms";
 import { Router, RouterLink } from "@angular/router";
 import { TradeService } from "../../core/services/trade.service";
+import { TIME_FRAMES } from "../../shared/models/trade.model";
 import { debounceTime, distinctUntilChanged } from "rxjs/operators";
 
 @Component({
@@ -114,7 +115,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
                 step="0.05"
               />
               <span class="error" *ngIf="submitted && f['stopLoss'].errors"
-                >SL is mandatory — no SL, no trade</span
+                >SL is mandatory</span
               >
             </div>
             <div class="form-group">
@@ -131,7 +132,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
               <label>
                 Exit Price
                 <span class="hint" *ngIf="!isExitPriceSet()"
-                  >Leave blank if trade still open</span
+                  >Leave blank if still open</span
                 >
                 <span class="hint-green" *ngIf="isExitPriceSet()"
                   >✓ Trade will be marked closed</span
@@ -187,7 +188,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
             </div>
           </div>
 
-          <!-- Computed RR Preview -->
+          <!-- RR Preview -->
           <div class="rr-preview" *ngIf="computedRR()">
             <span class="rr-label">Planned R:R</span>
             <span
@@ -203,9 +204,9 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
           </div>
         </div>
 
-        <!-- Section 2: Setup & Market -->
+        <!-- Section 2: Setup, Market & Time Frames -->
         <div class="form-section">
-          <h2 class="section-title">Setup & Market Context</h2>
+          <h2 class="section-title">Setup, Market Context & Time Frames</h2>
           <div class="form-grid">
             <div class="form-group">
               <label>Setup Type *</label>
@@ -237,6 +238,36 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
               </select>
             </div>
           </div>
+
+          <!-- Time Frames — multi-select tags -->
+          <div class="form-group full-width tf-section">
+            <label>
+              Time Frame(s) Used
+              <span class="hint"
+                >Select all time frames you analysed for this trade</span
+              >
+            </label>
+            <div class="tf-grid">
+              <button
+                type="button"
+                *ngFor="let tf of timeFrameOptions"
+                [class.active]="selectedTimeFrames().includes(tf)"
+                [class.tf-short]="isShortTf(tf)"
+                [class.tf-medium]="isMediumTf(tf)"
+                [class.tf-long]="isLongTf(tf)"
+                (click)="toggleTimeFrame(tf)"
+                class="tf-btn"
+              >
+                {{ tf }}
+              </button>
+            </div>
+            <div class="tf-selected" *ngIf="selectedTimeFrames().length">
+              Selected:
+              <span *ngFor="let tf of selectedTimeFrames()" class="tf-chip">{{
+                tf
+              }}</span>
+            </div>
+          </div>
         </div>
 
         <!-- Section 3: MANDATORY THINKING LAYER -->
@@ -259,7 +290,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
               formControlName="whyTookTrade"
               rows="3"
               class="form-textarea"
-              placeholder="e.g. Price broke above 20-day resistance at 18450 with 2.5x average volume. RSI was 58 — not overbought. FII data showed net buying of ₹2300cr yesterday..."
+              placeholder="e.g. Price broke above 20-day resistance at 18450 with 2.5x average volume..."
             ></textarea>
             <div
               class="char-count"
@@ -272,15 +303,13 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
           <div class="form-group full-width">
             <label
               >Your Edge / Setup Logic *
-              <span class="hint"
-                >What gives you an advantage in this trade?</span
-              ></label
+              <span class="hint">What gives you an advantage?</span></label
             >
             <textarea
               formControlName="edgeOrSetupLogic"
               rows="3"
               class="form-textarea"
-              placeholder="e.g. Historical backtest shows breakouts above 52-week high with volume > 1.5x average have 68% win rate on NIFTY50 stocks..."
+              placeholder="e.g. Historical backtest shows breakouts above 52-week high with volume > 1.5x have 68% win rate..."
             ></textarea>
           </div>
 
@@ -300,7 +329,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
               formControlName="invalidationReason"
               rows="2"
               class="form-textarea"
-              placeholder="e.g. If price closes below 18350 (the breakout zone) on a 15-min candle, the thesis is invalid..."
+              placeholder="e.g. If price closes below 18350 on a 15-min candle, the thesis is invalid..."
             ></textarea>
           </div>
 
@@ -342,7 +371,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         <div class="form-section">
           <h2 class="section-title">Outcome & Tags</h2>
           <div class="form-grid">
-            <!-- Outcome — auto-disabled when exit price is set -->
+            <!-- Outcome -->
             <div class="form-group">
               <label>
                 Outcome
@@ -353,8 +382,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
                   >Auto-calculated from exit price</span
                 >
               </label>
-
-              <!-- Show native select ONLY when no exit price -->
               <select
                 *ngIf="!isExitPriceSet()"
                 formControlName="outcomeTag"
@@ -366,8 +393,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
                 <option value="BREAKEVEN">Breakeven</option>
                 <option value="NO_TRADE">No Trade Taken</option>
               </select>
-
-              <!-- Show styled locked display ONLY when exit price is set -->
               <div
                 *ngIf="isExitPriceSet()"
                 class="outcome-display"
@@ -378,8 +403,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
                   form.getRawValue().outcomeTag
                 }}</span>
               </div>
-
-              <!-- Badge shown only when locked -->
               <span
                 *ngIf="isExitPriceSet()"
                 class="auto-badge"
@@ -466,6 +489,65 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
           </div>
         </div>
 
+        <!-- Section 5: Chart Images -->
+        <div class="form-section">
+          <h2 class="section-title">
+            Chart Screenshots
+            <span class="img-count-badge">{{ chartImages().length }}/5</span>
+          </h2>
+          <p class="section-sub">
+            Attach up to 5 chart images — entry, exit, multi-timeframe analysis
+          </p>
+
+          <!-- Upload area -->
+          <div
+            class="upload-area"
+            (click)="triggerFileInput()"
+            (dragover)="onDragOver($event)"
+            (drop)="onDrop($event)"
+            [class.drag-over]="isDragOver()"
+            *ngIf="chartImages().length < 5"
+          >
+            <input
+              type="file"
+              #fileInput
+              accept="image/*"
+              multiple
+              style="display:none"
+              (change)="onFilesSelected($event)"
+            />
+            <div class="upload-icon">↑</div>
+            <div class="upload-text">Click or drag images here</div>
+            <div class="upload-sub">
+              PNG, JPG, WebP — max 500KB each ·
+              {{ 5 - chartImages().length }} slot(s) remaining
+            </div>
+          </div>
+
+          <!-- Image previews -->
+          <div class="image-grid" *ngIf="chartImages().length">
+            <div
+              *ngFor="let img of chartImages(); let i = index"
+              class="image-card"
+            >
+              <img [src]="img" alt="Chart {{ i + 1 }}" class="chart-preview" />
+              <div class="image-overlay">
+                <button
+                  type="button"
+                  class="img-remove-btn"
+                  (click)="removeImage(i)"
+                  title="Remove"
+                >
+                  ✕
+                </button>
+                <span class="img-label">Chart {{ i + 1 }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="img-error" *ngIf="imageError()">{{ imageError() }}</div>
+        </div>
+
         <!-- Error summary -->
         <div class="error-summary" *ngIf="apiError()">
           <strong>Entry Rejected:</strong> {{ apiError() }}
@@ -486,7 +568,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         padding: 32px;
         max-width: 900px;
       }
-
       .back-link {
         color: #64748b;
         text-decoration: none;
@@ -510,7 +591,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
       .warning-text {
         color: #f59e0b;
       }
-
       .trade-form {
         display: flex;
         flex-direction: column;
@@ -526,6 +606,11 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
       }
       .thinking-section {
         border-color: #3b82f6;
+      }
+      .section-sub {
+        font-size: 13px;
+        color: #475569;
+        margin: -12px 0 16px;
       }
 
       .section-title {
@@ -547,6 +632,16 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         border-radius: 4px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+      }
+      .img-count-badge {
+        font-size: 12px;
+        background: rgba(139, 92, 246, 0.15);
+        color: #a78bfa;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-weight: 600;
+        text-transform: none;
+        letter-spacing: 0;
       }
 
       .form-grid {
@@ -612,24 +707,18 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-family: inherit;
         line-height: 1.5;
       }
-
-      /* Stop loss amber border */
       .sl-input {
         border-color: #f59e0b !important;
       }
-
-      /* Exit price green border when set */
       .form-input.exit-set {
         border-color: #22c55e !important;
       }
-
-      /* P&L muted when auto-calculated */
       .form-input.input-muted {
         border-color: #1e2433;
         color: #475569;
       }
 
-      /* ─── Outcome locked display ───────────────────────────────── */
+      /* ─── Outcome locked display ───────────────────────── */
       .outcome-display {
         display: flex;
         align-items: center;
@@ -648,33 +737,26 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-weight: 800;
         letter-spacing: 1px;
       }
-
-      /* PROFIT — green */
       .outcome-profit {
         background: rgba(34, 197, 94, 0.08);
         border-color: #22c55e;
         color: #22c55e;
       }
-      /* LOSS — red */
       .outcome-loss {
         background: rgba(239, 68, 68, 0.08);
         border-color: #ef4444;
         color: #ef4444;
       }
-      /* BREAKEVEN — amber */
       .outcome-breakeven {
         background: rgba(245, 158, 11, 0.08);
         border-color: #f59e0b;
         color: #f59e0b;
       }
-      /* OPEN — blue */
       .outcome-open {
         background: rgba(59, 130, 246, 0.08);
         border-color: #3b82f6;
         color: #3b82f6;
       }
-
-      /* ─── Auto badge dynamic colors ───────────────────────────── */
       .auto-badge {
         font-size: 11px;
         font-weight: 600;
@@ -694,7 +776,70 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         color: #3b82f6;
       }
 
-      /* ─── RR Preview ──────────────────────────────────────────── */
+      /* ─── Time Frames ──────────────────────────────────── */
+      .tf-section {
+        margin-top: 16px;
+      }
+      .tf-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .tf-btn {
+        padding: 6px 14px;
+        border-radius: 20px;
+        border: 1px solid #1e2433;
+        background: #0a0e1a;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .tf-btn:hover {
+        border-color: #3b82f6;
+        color: #3b82f6;
+      }
+      /* Short timeframes — blue family */
+      .tf-btn.tf-short.active {
+        background: rgba(59, 130, 246, 0.12);
+        border-color: #3b82f6;
+        color: #3b82f6;
+      }
+      /* Medium timeframes — purple family */
+      .tf-btn.tf-medium.active {
+        background: rgba(139, 92, 246, 0.12);
+        border-color: #8b5cf6;
+        color: #a78bfa;
+      }
+      /* Long timeframes — teal family */
+      .tf-btn.tf-long.active {
+        background: rgba(20, 184, 166, 0.12);
+        border-color: #14b8a6;
+        color: #2dd4bf;
+      }
+
+      .tf-selected {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #64748b;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+      .tf-chip {
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.3);
+        color: #3b82f6;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+
+      /* ─── RR Preview ───────────────────────────────────── */
       .rr-preview {
         display: flex;
         align-items: center;
@@ -726,7 +871,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         color: #f59e0b;
       }
 
-      /* ─── Direction / Type toggles ────────────────────────────── */
+      /* ─── Toggle buttons ───────────────────────────────── */
       .toggle-group {
         display: flex;
         gap: 8px;
@@ -765,7 +910,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         border-color: #ef4444;
       }
 
-      /* ─── Emotion buttons ─────────────────────────────────────── */
+      /* ─── Emotion buttons ──────────────────────────────── */
       .emotion-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -819,7 +964,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         border-left-color: #ef4444;
       }
 
-      /* ─── Tags ────────────────────────────────────────────────── */
+      /* ─── Tags ─────────────────────────────────────────── */
       .tags-grid {
         display: flex;
         flex-wrap: wrap;
@@ -841,17 +986,100 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         color: #a78bfa;
       }
 
-      /* ─── Char count ──────────────────────────────────────────── */
-      .char-count {
-        font-size: 11px;
-        color: #475569;
-        text-align: right;
+      /* ─── Chart Image Upload ───────────────────────────── */
+      .upload-area {
+        border: 2px dashed #1e2433;
+        border-radius: 12px;
+        padding: 32px 24px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: #0a0e1a;
+        margin-bottom: 16px;
       }
-      .char-count.warn {
-        color: #ef4444;
+      .upload-area:hover,
+      .upload-area.drag-over {
+        border-color: #3b82f6;
+        background: rgba(59, 130, 246, 0.05);
+      }
+      .upload-icon {
+        font-size: 28px;
+        color: #3b82f6;
+        margin-bottom: 8px;
+        font-weight: 700;
+      }
+      .upload-text {
+        font-size: 14px;
+        color: #94a3b8;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .upload-sub {
+        font-size: 12px;
+        color: #475569;
       }
 
-      /* ─── SL check ────────────────────────────────────────────── */
+      .image-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+        margin-top: 8px;
+      }
+      .image-card {
+        position: relative;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #1e2433;
+        aspect-ratio: 16/9;
+      }
+      .chart-preview {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .image-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        padding: 6px;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .image-card:hover .image-overlay {
+        opacity: 1;
+      }
+      .img-remove-btn {
+        background: #ef4444;
+        border: none;
+        color: #fff;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        font-size: 11px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .img-label {
+        font-size: 11px;
+        color: #fff;
+        font-weight: 600;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .img-error {
+        font-size: 12px;
+        color: #ef4444;
+        margin-top: 8px;
+      }
+
+      /* ─── SL Check ─────────────────────────────────────── */
       .sl-check {
         flex-direction: row;
         align-items: flex-start;
@@ -879,7 +1107,14 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         margin-top: 6px;
       }
 
-      /* ─── Errors ──────────────────────────────────────────────── */
+      .char-count {
+        font-size: 11px;
+        color: #475569;
+        text-align: right;
+      }
+      .char-count.warn {
+        color: #ef4444;
+      }
       .error {
         font-size: 11px;
         color: #ef4444;
@@ -893,7 +1128,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-size: 14px;
       }
 
-      /* ─── Form actions ────────────────────────────────────────── */
       .form-actions {
         display: flex;
         gap: 12px;
@@ -941,7 +1175,13 @@ export class TradeFormComponent implements OnInit {
   loading = signal(false);
   apiError = signal("");
   selectedTags = signal<string[]>([]);
+  selectedTimeFrames = signal<string[]>([]);
+  chartImages = signal<string[]>([]);
+  imageError = signal("");
+  isDragOver = signal(false);
   strictMode = signal(false);
+
+  readonly timeFrameOptions = [...TIME_FRAMES];
 
   availableTags = [
     "#HighConfidence",
@@ -1008,53 +1248,43 @@ export class TradeFormComponent implements OnInit {
       slRespected: [true],
     });
 
-    // Watch exit price — auto-set outcome and lock dropdown
+    // Auto-set outcome when exit price is filled
     this.form
       .get("exitPrice")
       ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
       .subscribe((exitPrice) => {
-        const outcomeControl = this.form.get("outcomeTag");
+        const oc = this.form.get("outcomeTag");
         if (exitPrice && +exitPrice > 0) {
           const entry = +this.form.get("entryPrice")?.value || 0;
-          const direction = this.form.get("direction")?.value;
+          const dir = this.form.get("direction")?.value;
           if (entry > 0) {
-            const priceDiff =
-              direction === "BUY" ? +exitPrice - entry : entry - +exitPrice;
-            if (priceDiff > 0) {
-              outcomeControl?.setValue("PROFIT");
-            } else if (priceDiff < 0) {
-              outcomeControl?.setValue("LOSS");
-            } else {
-              outcomeControl?.setValue("BREAKEVEN");
-            }
+            const diff =
+              dir === "BUY" ? +exitPrice - entry : entry - +exitPrice;
+            oc?.setValue(diff > 0 ? "PROFIT" : diff < 0 ? "LOSS" : "BREAKEVEN");
           }
-          outcomeControl?.disable();
+          oc?.disable();
         } else {
-          outcomeControl?.enable();
-          outcomeControl?.setValue("OPEN");
+          oc?.enable();
+          oc?.setValue("OPEN");
         }
       });
 
-    // Re-evaluate when entry price changes (exit already set)
     this.form
       .get("entryPrice")
       ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
       .subscribe(() => {
-        const exitPrice = this.form.get("exitPrice")?.value;
-        if (exitPrice && +exitPrice > 0) {
-          this.form.get("exitPrice")?.setValue(exitPrice, { emitEvent: true });
-        }
+        const exit = this.form.get("exitPrice")?.value;
+        if (exit && +exit > 0)
+          this.form.get("exitPrice")?.setValue(exit, { emitEvent: true });
       });
 
-    // Re-evaluate when direction changes (exit already set)
     this.form
       .get("direction")
       ?.valueChanges.pipe(distinctUntilChanged())
       .subscribe(() => {
-        const exitPrice = this.form.get("exitPrice")?.value;
-        if (exitPrice && +exitPrice > 0) {
-          this.form.get("exitPrice")?.setValue(exitPrice, { emitEvent: true });
-        }
+        const exit = this.form.get("exitPrice")?.value;
+        if (exit && +exit > 0)
+          this.form.get("exitPrice")?.setValue(exit, { emitEvent: true });
       });
   }
 
@@ -1078,19 +1308,14 @@ export class TradeFormComponent implements OnInit {
   }
 
   outcomeColorClass(): string {
-    const outcome = this.form.getRawValue().outcomeTag;
-    switch (outcome) {
-      case "PROFIT":
-        return "outcome-profit";
-      case "LOSS":
-        return "outcome-loss";
-      case "BREAKEVEN":
-        return "outcome-breakeven";
-      case "OPEN":
-        return "outcome-open";
-      default:
-        return "outcome-open";
-    }
+    const o = this.form.getRawValue().outcomeTag;
+    return o === "PROFIT"
+      ? "outcome-profit"
+      : o === "LOSS"
+        ? "outcome-loss"
+        : o === "BREAKEVEN"
+          ? "outcome-breakeven"
+          : "outcome-open";
   }
 
   set(field: string, value: string) {
@@ -1098,34 +1323,114 @@ export class TradeFormComponent implements OnInit {
   }
 
   toggleTag(tag: string) {
-    this.selectedTags.update((tags) =>
-      tags.includes(tag) ? tags.filter((t) => t !== tag) : [...tags, tag],
+    this.selectedTags.update((t) =>
+      t.includes(tag) ? t.filter((x) => x !== tag) : [...t, tag],
     );
   }
 
+  // ─── Time Frame helpers ────────────────────────────────
+  toggleTimeFrame(tf: string) {
+    this.selectedTimeFrames.update((t) =>
+      t.includes(tf) ? t.filter((x) => x !== tf) : [...t, tf],
+    );
+  }
+
+  isShortTf(tf: string): boolean {
+    return ["1min", "3min", "5min", "10min", "15min"].includes(tf);
+  }
+  isMediumTf(tf: string): boolean {
+    return ["30min", "45min", "90min", "1hr", "2hr"].includes(tf);
+  }
+  isLongTf(tf: string): boolean {
+    return ["4hr", "6hr", "12hr", "1day", "1week"].includes(tf);
+  }
+
+  // ─── Image Upload ──────────────────────────────────────
+  triggerFileInput() {
+    const input = document.querySelector(
+      "input[type=file]",
+    ) as HTMLInputElement;
+    input?.click();
+  }
+
+  onFilesSelected(event: Event) {
+    const files = (event.target as HTMLInputElement).files;
+    if (files) this.processFiles(Array.from(files));
+  }
+
+  onDragOver(event: DragEvent) {
+    event.preventDefault();
+    this.isDragOver.set(true);
+  }
+
+  onDrop(event: DragEvent) {
+    event.preventDefault();
+    this.isDragOver.set(false);
+    const files = Array.from(event.dataTransfer?.files || []);
+    this.processFiles(files);
+  }
+
+  private processFiles(files: File[]) {
+    this.imageError.set("");
+    const remaining = 5 - this.chartImages().length;
+    const toProcess = files.slice(0, remaining);
+
+    if (files.length > remaining) {
+      this.imageError.set(
+        `Only ${remaining} slot(s) remaining. Extra images were skipped.`,
+      );
+    }
+
+    toProcess.forEach((file) => {
+      if (!file.type.startsWith("image/")) {
+        this.imageError.set("Only image files are allowed.");
+        return;
+      }
+      if (file.size > 500 * 1024) {
+        this.imageError.set(
+          `"${file.name}" exceeds 500KB. Please compress it before uploading.`,
+        );
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = e.target?.result as string;
+        if (this.chartImages().length < 5) {
+          this.chartImages.update((imgs) => [...imgs, base64]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  removeImage(index: number) {
+    this.chartImages.update((imgs) => imgs.filter((_, i) => i !== index));
+  }
+
+  // ─── Submit ────────────────────────────────────────────
   submit() {
     this.submitted = true;
     this.apiError.set("");
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
-      const invalidFields = Object.keys(this.form.controls).filter(
+      const invalid = Object.keys(this.form.controls).filter(
         (k) => this.form.controls[k].invalid && this.form.controls[k].enabled,
       );
-      this.apiError.set(
-        "Please fill required fields: " + invalidFields.join(", "),
-      );
+      this.apiError.set("Please fill required fields: " + invalid.join(", "));
       return;
     }
 
     this.loading.set(true);
+    const raw = this.form.getRawValue();
 
-    // getRawValue() includes disabled fields (outcomeTag when auto-locked)
-    const rawValue = this.form.getRawValue();
     const payload = {
-      ...rawValue,
+      ...raw,
       tags: this.selectedTags(),
-      slRespected: rawValue.slRespected ?? true,
+      timeFrames: this.selectedTimeFrames(),
+      chartImageUrls: this.chartImages(),
+      slRespected: raw.slRespected ?? true,
     };
 
     this.tradeService.createTrade(payload).subscribe({
@@ -1137,10 +1442,11 @@ export class TradeFormComponent implements OnInit {
         this.loading.set(false);
         const body = err.error;
         if (body?.fieldErrors) {
-          const msgs = Object.entries(body.fieldErrors)
-            .map(([f, m]) => `${f}: ${m}`)
-            .join(" | ");
-          this.apiError.set(msgs);
+          this.apiError.set(
+            Object.entries(body.fieldErrors)
+              .map(([f, m]) => `${f}: ${m}`)
+              .join(" | "),
+          );
         } else if (body?.details?.length) {
           this.apiError.set(body.details.join(" | "));
         } else {
