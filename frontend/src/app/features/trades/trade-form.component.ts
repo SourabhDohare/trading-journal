@@ -1449,10 +1449,10 @@ export class TradeFormComponent implements OnInit {
   if (!entry || !sl) return null;
 
   if (dir === 'BUY' && sl >= entry) {
-    return `SL ₹${sl} is at or above your entry ₹${entry}. For BUY trades, SL must be below entry to cap your downside.`;
+    return `SL ₹${sl} is at or below your entry ₹${entry}. For BUY trades, SL must be below entry to cap your downside.`;
   }
   if (dir === 'SELL' && sl <= entry) {
-    return `SL ₹${sl} is at or below your entry ₹${entry}. For SELL trades, SL must be above entry — if price rises to SL you exit the short.`;
+    return `SL ₹${sl} is at or above your entry ₹${entry}. For SELL trades, SL must be above entry — if price rises to SL you exit the short.`;
   }
   return null;
 }
