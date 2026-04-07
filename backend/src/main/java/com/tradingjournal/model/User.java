@@ -7,6 +7,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -20,26 +21,47 @@ public class User {
     @Id
     private String id;
 
+    // ─── Auth ─────────────────────────────────────────────
     @Indexed(unique = true)
     private String email;
+    private String passwordHash;
+    private Role   role;
 
-    private String password;
+    // ─── Personal Info ─────────────────────────────────────
+    private String fullName;
+    private String displayName;        // shown in UI
+    private String phone;
+    private String city;
+    private String country;
+    private String avatarBase64;       // Base64 profile picture
 
-    private String firstName;
-    private String lastName;
+    // ─── Trading Identity ──────────────────────────────────
+    private ExperienceLevel  experienceLevel;   // BEGINNER / INTERMEDIATE / ADVANCED / PROFESSIONAL
+    private TradingStyle     primaryStyle;      // INTRADAY / SWING / POSITIONAL / ALL
+    private List<String>     marketsTraded;     // EQUITY, F&O, CRYPTO, COMMODITY, FOREX, INDEX
+    private List<String>     platformsUsed;     // Zerodha, Upstox, Angel One, etc.
+    private String           primaryBroker;
 
-    private Role role;
+    // ─── Capital & Risk Profile ────────────────────────────
+    private BigDecimal tradingCapital;          // total capital deployed for trading
+    private BigDecimal riskPerTradePercent;     // default risk per trade (%)
+    private BigDecimal maxDrawdownTolerance;    // max DD they can handle (%)
+    private BigDecimal targetMonthlyReturnPct;  // monthly return goal (%)
+    private Integer    avgTradesPerMonth;        // approximate trading frequency
 
-    private String teamId;       // For multi-user/team support
-    private String managerId;    // Role-based access
+    // ─── Goals & Motivation ────────────────────────────────
+    private String  tradingGoal;               // "Full-time income", "Supplement salary", etc.
+    private String  biggestWeakness;           // Self-reported weakness
+    private String  whyImproving;              // What they want to get better at
 
-    private TradingConfig tradingConfig;
+    // ─── Account Settings ──────────────────────────────────
+    private boolean strictMode;                // reject incomplete trade entries
+    private boolean emailNotifications;
+    private boolean weeklyReportEmail;
 
-    private boolean strictMode;  // Reject incomplete entries
-    private boolean active;
-
-    private String profileImageUrl;
-    private String timezone;
+    // ─── Account Status ────────────────────────────────────
+    private PlanType planType;                 // FREE / PRO / ENTERPRISE
+    private boolean  active;
 
     @CreatedDate
     private LocalDateTime createdAt;
@@ -47,22 +69,27 @@ public class User {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    private LocalDateTime lastLoginAt;
+    // ─── Enums ─────────────────────────────────────────────
+    public enum Role { TRADER, MANAGER, ADMIN }
 
-    public enum Role {
-        TRADER, MANAGER, ADMIN
+    public enum ExperienceLevel {
+        BEGINNER,       // < 1 year
+        INTERMEDIATE,   // 1–3 years
+        ADVANCED,       // 3–7 years
+        PROFESSIONAL    // 7+ years / full-time
     }
 
+    public enum TradingStyle { INTRADAY, SWING, POSITIONAL, ALL }
+
+    public enum PlanType { FREE, PRO, ENTERPRISE }
+
+    // ─── Embedded config (kept for backward compat) ────────
     @Data
-    @Builder
     @NoArgsConstructor
     @AllArgsConstructor
     public static class TradingConfig {
-        private String defaultCurrency;       // INR, USD
-        private Double defaultRiskPercent;    // Default risk per trade %
-        private Double capitalDeployed;       // Total capital
-        private List<String> brokerAccounts;
-        private boolean notificationsEnabled;
-        private Integer defaultLotSize;
+        private boolean strictMode;
+        private BigDecimal defaultRiskPercent;
+        private BigDecimal capitalDeployed;
     }
 }
