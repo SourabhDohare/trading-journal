@@ -1443,19 +1443,19 @@ export class TradeFormComponent implements OnInit {
 
   // Returns a warning string if SL is on the "wrong" side (non-blocking)
   slDirectionWarning(): string | null {
-    const entry = +this.f["entryPrice"].value || 0;
-    const sl = +this.f["stopLoss"].value || 0;
-    const dir = this.f["direction"].value;
-    if (!entry || !sl) return null;
+  const entry = +this.f['entryPrice'].value || 0;
+  const sl    = +this.f['stopLoss'].value   || 0;
+  const dir   = this.f['direction'].value;
+  if (!entry || !sl) return null;
 
-    if (dir === "BUY" && sl >= entry) {
-      return "SL is above or equal to entry for a BUY — are you sure?";
-    }
-    if (dir === "SELL" && sl <= entry) {
-      return "SL is below or equal to entry for a SELL — are you sure?";
-    }
-    return null;
+  if (dir === 'BUY' && sl >= entry) {
+    return `SL ₹${sl} is at or above your entry ₹${entry}. For BUY trades, SL must be below entry to cap your downside.`;
   }
+  if (dir === 'SELL' && sl <= entry) {
+    return `SL ₹${sl} is at or below your entry ₹${entry}. For SELL trades, SL must be above entry — if price rises to SL you exit the short.`;
+  }
+  return null;
+}
 
   // Returns error text if target is on wrong side — this IS blocking on submit
   targetError(): string {
