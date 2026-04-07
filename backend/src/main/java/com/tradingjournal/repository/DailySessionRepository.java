@@ -10,7 +10,17 @@ import java.util.Optional;
 
 @Repository
 public interface DailySessionRepository extends MongoRepository<DailySession, String> {
-    Optional<DailySession> findByUserIdAndSessionDate(String userId, LocalDate date);
+
+    // Find a specific day's session for a user
+    Optional<DailySession> findByUserIdAndSessionDate(String userId, LocalDate sessionDate);
+
+    // All sessions for a user, newest first
     List<DailySession> findByUserIdOrderBySessionDateDesc(String userId);
-    List<DailySession> findByUserIdAndSessionDateBetween(String userId, LocalDate from, LocalDate to);
+
+    // Sessions in a date range (for history pagination)
+    List<DailySession> findByUserIdAndSessionDateBetweenOrderBySessionDateDesc(
+            String userId, LocalDate from, LocalDate to);
+
+    // Count for this user
+    long countByUserId(String userId);
 }
