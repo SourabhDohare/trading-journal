@@ -28,7 +28,7 @@ import { Analytics } from "../../shared/models/analytics.model";
       </div>
 
       <ng-container *ngIf="analytics()">
-        <!-- Discipline Score Banner -->
+        <!-- Discipline Banner -->
         <div
           class="discipline-banner"
           [ngClass]="'grade-' + analytics()!.disciplineGrade"
@@ -187,7 +187,10 @@ import { Analytics } from "../../shared/models/analytics.model";
                 <span>State</span><span>Trades</span><span>Win %</span
                 ><span>Avg P&L</span>
               </div>
-              <div *ngFor="let key of emotionKeys()" class="perf-row">
+              <div
+                *ngFor="let key of emotionKeys()"
+                class="perf-row emotion-row"
+              >
                 <span class="emotion-name" [ngClass]="key.toLowerCase()">{{
                   key
                 }}</span>
@@ -226,7 +229,7 @@ import { Analytics } from "../../shared/models/analytics.model";
                 <span>Period</span><span>Trades</span><span>Win %</span
                 ><span>Avg P&L</span>
               </div>
-              <div *ngFor="let key of timeKeys()" class="perf-row">
+              <div *ngFor="let key of timeKeys()" class="perf-row emotion-row">
                 <span>{{ formatPeriod(key) }}</span>
                 <span>{{ analytics()!.timePerformance[key].count }}</span>
                 <span
@@ -256,7 +259,7 @@ import { Analytics } from "../../shared/models/analytics.model";
                 <span>Instrument</span><span>Trades</span><span>Win %</span
                 ><span>Total P&L</span>
               </div>
-              <div *ngFor="let key of instrKeys()" class="perf-row">
+              <div *ngFor="let key of instrKeys()" class="perf-row instr-row">
                 <span class="instr-name">{{ key }}</span>
                 <span>{{ analytics()!.instrumentPerformance[key].count }}</span>
                 <span
@@ -286,11 +289,11 @@ import { Analytics } from "../../shared/models/analytics.model";
             </div>
           </div>
 
-          <!-- ─── Time Frame Performance (NEW) ─────────────────── -->
-          <div class="card tf-full-card" *ngIf="timeFrameUsageEntries().length">
+          <!-- ─── Time Frame Performance (NEW) ─── -->
+          <div class="card tf-card" *ngIf="timeFrameUsageEntries().length">
             <h3 class="card-title">Time Frame Usage & Performance</h3>
 
-            <!-- Usage bar chart -->
+            <!-- Bar chart of usage -->
             <div class="tf-usage-bars">
               <div
                 class="tf-bar-row"
@@ -314,15 +317,12 @@ import { Analytics } from "../../shared/models/analytics.model";
 
             <!-- Performance table -->
             <div
-              class="tf-perf-table"
+              class="tf-perf"
               *ngIf="analytics()!.timeFramePerformance?.length"
             >
-              <div class="perf-header tf-perf-header">
-                <span>Time Frame</span>
-                <span>Trades</span>
-                <span>Win %</span>
-                <span>Avg P&L</span>
-                <span>Total P&L</span>
+              <div class="perf-header">
+                <span>Time Frame</span><span>Trades</span><span>Win %</span
+                ><span>Avg P&L</span><span>Total P&L</span>
               </div>
               <div
                 *ngFor="let t of analytics()!.timeFramePerformance"
@@ -484,7 +484,7 @@ import { Analytics } from "../../shared/models/analytics.model";
         cursor: pointer;
       }
 
-      /* ─── Discipline Banner ─────────────────────────────── */
+      /* ─── Discipline Banner ─────────────────────────── */
       .discipline-banner {
         border-radius: 12px;
         padding: 20px 24px;
@@ -576,7 +576,7 @@ import { Analytics } from "../../shared/models/analytics.model";
         border-radius: 4px;
       }
 
-      /* ─── Stats Grid ────────────────────────────────────── */
+      /* ─── Stats Grid ────────────────────────────────── */
       .stats-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -610,7 +610,7 @@ import { Analytics } from "../../shared/models/analytics.model";
         color: #ef4444;
       }
 
-      /* ─── Analysis Grid ─────────────────────────────────── */
+      /* ─── Analysis Grid ─────────────────────────────── */
       .analysis-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -622,7 +622,7 @@ import { Analytics } from "../../shared/models/analytics.model";
       .pattern-card {
         grid-column: 1 / -1;
       }
-      .tf-full-card {
+      .tf-card {
         grid-column: 1 / -1;
       }
 
@@ -641,7 +641,7 @@ import { Analytics } from "../../shared/models/analytics.model";
         margin: 0 0 16px;
       }
 
-      /* ─── Perf Tables ───────────────────────────────────── */
+      /* ─── Perf tables ───────────────────────────────── */
       .perf-table {
         font-size: 13px;
       }
@@ -667,6 +667,13 @@ import { Analytics } from "../../shared/models/analytics.model";
       .perf-row:last-child {
         border-bottom: none;
       }
+      .emotion-row {
+        grid-template-columns: 2fr 1fr 1fr 1fr;
+      }
+      .instr-row {
+        grid-template-columns: 2fr 1fr 1fr 1fr;
+      }
+
       .setup-name {
         font-weight: 600;
         color: #e2e8f0;
@@ -703,7 +710,7 @@ import { Analytics } from "../../shared/models/analytics.model";
         color: #fb923c;
       }
 
-      /* ─── Time Frame section ────────────────────────────── */
+      /* ─── Time Frame section ────────────────────────── */
       .tf-usage-bars {
         display: flex;
         flex-direction: column;
@@ -757,11 +764,10 @@ import { Analytics } from "../../shared/models/analytics.model";
         text-align: right;
       }
 
-      /* TF performance table header overrides (4-col for TF vs 5-col for others) */
-      .tf-perf-header {
-        grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr !important;
+      .tf-perf .perf-header {
+        grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
       }
-      .tf-perf-table .perf-row {
+      .tf-perf .perf-row {
         grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr;
       }
 
@@ -789,7 +795,7 @@ import { Analytics } from "../../shared/models/analytics.model";
         color: #2dd4bf;
       }
 
-      /* ─── Monthly P&L ───────────────────────────────────── */
+      /* ─── Monthly P&L ───────────────────────────────── */
       .monthly-bars {
         display: flex;
         flex-direction: column;
@@ -835,7 +841,7 @@ import { Analytics } from "../../shared/models/analytics.model";
         color: #ef4444;
       }
 
-      /* ─── Patterns ──────────────────────────────────────── */
+      /* ─── Patterns ──────────────────────────────────── */
       .pattern-item {
         font-size: 13px;
         padding: 10px 14px;
@@ -898,7 +904,7 @@ export class AnalyticsComponent implements OnInit {
       });
   }
 
-  // ─── Existing helpers ──────────────────────────────────────
+  // ─── Existing key helpers ──────────────────────────────────
   setupKeys(): string[] {
     return Object.keys(this.analytics()?.setupPerformance || {});
   }

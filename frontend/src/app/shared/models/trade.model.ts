@@ -1,14 +1,15 @@
 // src/app/shared/models/trade.model.ts
 
 export type InstrumentType = 'STOCK' | 'CRYPTO' | 'FO_FUTURES' | 'FO_OPTIONS' | 'FOREX' | 'COMMODITY' | 'INDEX';
-export type TradeType = 'INTRADAY' | 'SWING' | 'POSITIONAL';
-export type Direction = 'BUY' | 'SELL';
-export type OutcomeTag = 'PROFIT' | 'LOSS' | 'BREAKEVEN' | 'NO_TRADE' | 'OPEN';
-export type SetupType = 'BREAKOUT' | 'REVERSAL' | 'PULLBACK' | 'TREND_FOLLOW' | 'RANGE_TRADE' | 'GAP_PLAY' | 'MOMENTUM' | 'MEAN_REVERSION' | 'VOLUME_BASED' | 'NEWS_BASED' | 'OTHER';
-export type MarketContext = 'TRENDING_UP' | 'TRENDING_DOWN' | 'RANGING' | 'VOLATILE' | 'NEWS_DRIVEN' | 'CONSOLIDATION';
+export type TradeType      = 'INTRADAY' | 'SWING' | 'POSITIONAL';
+export type Direction      = 'BUY' | 'SELL';
+export type OutcomeTag     = 'PROFIT' | 'LOSS' | 'BREAKEVEN' | 'NO_TRADE' | 'OPEN';
+export type SetupType      = 'BREAKOUT' | 'REVERSAL' | 'PULLBACK' | 'TREND_FOLLOW' | 'RANGE_TRADE'
+                           | 'GAP_PLAY' | 'MOMENTUM' | 'MEAN_REVERSION' | 'VOLUME_BASED' | 'NEWS_BASED' | 'OTHER';
+export type MarketContext  = 'TRENDING_UP' | 'TRENDING_DOWN' | 'RANGING' | 'VOLATILE' | 'NEWS_DRIVEN' | 'CONSOLIDATION';
 export type EmotionalState = 'CALM' | 'FOMO' | 'REVENGE' | 'HESITATION' | 'OVERCONFIDENT' | 'ANXIOUS' | 'DISCIPLINED';
 
-// Available time frames
+// All supported time frames
 export const TIME_FRAMES = [
   '1min', '3min', '5min', '10min', '15min', '30min',
   '45min', '90min', '1hr', '2hr', '4hr', '6hr', '12hr',
@@ -39,7 +40,7 @@ export interface Trade {
   actualRR?: number;
   setupType: SetupType;
   marketContext: MarketContext;
-  timeFrames?: string[];          // multi-select time frames
+  timeFrames?: string[];          // multi-select time frames used
   whyTookTrade: string;
   edgeOrSetupLogic: string;
   confirmationUsed: string;
@@ -51,7 +52,7 @@ export interface Trade {
   willAvoid?: string;
   disciplineScore?: number;
   tags: string[];
-  chartImageUrls?: string[];      // base64 or URLs, max 5
+  chartImageUrls?: string[];      // base64 strings, max 5
   notes?: string;
   exchange?: string;
   brokerage?: number;
