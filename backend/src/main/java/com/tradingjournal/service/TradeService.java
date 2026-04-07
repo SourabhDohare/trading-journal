@@ -55,57 +55,55 @@ public class TradeService {
 
     // ─── Update Trade (post-trade reflection) ─────────────────
 
-    public TradeDTO.Response updateTrade(String userId, String tradeId, TradeDTO.UpdateRequest request) {
-        Trade trade = tradeRepository.findByIdAndUserId(tradeId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Trade not found: " + tradeId));
+    // ── REPLACE the entire updateTrade() method in TradeService.java ─────────────
 
-        if (request.getExitPrice() != null) {
-            trade.setExitPrice(request.getExitPrice());
-            trade.setExitDate(request.getExitDate() != null ? request.getExitDate() : LocalDateTime.now());
-            recalculatePnl(trade);
-        }
-        if (request.getTimeFrames() != null) trade.setTimeFrames(request.getTimeFrames());
-        if (request.getChartImageUrls() != null) {
-            List<String> imgs = request.getChartImageUrls();
-            if (imgs.size() > 5) imgs = imgs.subList(0, 5);
-            trade.setChartImageUrls(imgs);
-        }
+public TradeDTO.Response updateTrade(String tradeId, String userId, TradeDTO.UpdateRequest request) {
+    Trade trade = tradeRepository.findByIdAndUserId(tradeId, userId)
+            .orElseThrow(() -> new ResourceNotFoundException("Trade not found: " + tradeId));
 
-        if (request.getOutcomeTag() != null)
-            trade.setOutcomeTag(request.getOutcomeTag());
-        if (request.getPnlAbsolute() != null)
-            trade.setPnlAbsolute(request.getPnlAbsolute());
-        if (request.getPnlPercent() != null)
-            trade.setPnlPercent(request.getPnlPercent());
-
-        // Post-trade reflection — enforce if set
-        if (request.getWhatWentRight() != null)
-            trade.setWhatWentRight(request.getWhatWentRight());
-        if (request.getWhatWentWrong() != null)
-            trade.setWhatWentWrong(request.getWhatWentWrong());
-        if (request.getWillRepeat() != null)
-            trade.setWillRepeat(request.getWillRepeat());
-        if (request.getWillAvoid() != null)
-            trade.setWillAvoid(request.getWillAvoid());
-        if (request.getDisciplineScore() != null)
-            trade.setDisciplineScore(request.getDisciplineScore());
-        if (request.getNotes() != null)
-            trade.setNotes(request.getNotes());
-
-        trade.setSlRespected(request.isSlRespected());
-        trade.setReviewed(request.isReviewed());
-
-        if (request.getTags() != null) {
-            List<String> tags = new ArrayList<>(request.getTags());
-            // Auto-tag based on reflection
-            if (!request.isSlRespected())
-                tags.add("#DisciplineBreak");
-            trade.setTags(tags);
-        }
-
-        trade = tradeRepository.save(trade);
-        return mapToResponse(trade);
+    // ── Reflection fields ───────────────────────────────────────────────────
+    if (request.getWhatWentRight()  != null) trade.setWhatWentRight(request.getWhatWentRight());
+    if (request.getWhatWentWrong()  != null) trade.setWhatWentWrong(request.getWhatWentWrong());
+    if (request.getWillRepeat()     != null) trade.setWillRepeat(request.getWillRepeat());
+    if (request.getWillAvoid()      != null) trade.setWillAvoid(request.getWillAvoid());
+    if (request.getDisciplineScore()!= null) trade.setDisciplineScore(request.getDisciplineScore());
+    if (request.getNotes()          != null) trade.setNotes(request.getNotes());
+    if (request.getTags()           != null) trade.setTags(new ArrayList<>(request.getTags()));
+    if (request.getTimeFrames()     != null) trade.setTimeFrames(new ArrayList<>(request.getTimeFrames()));
+    if (request.getChartImageUrls() != null) {
+        List<String> imgs = new ArrayList<>(request.getChartImageUrls());
+        if (imgs.size() > 5) imgs = imgs.subList(0, 5);
+        trade.setChartImageUrls(imgs);
     }
+    trade.setSlRespected(request.isSlRespected());
+    trade.setReviewed(request.isReviewed());
+
+    // ── CLOSE TRADE: when exit price is provided ────────────────────────────
+    // This is the critical path — sets exitPrice then recalculates everything
+    if (request.getExitPrice() != null
+            && request.getExitPrice().compareTo(BigDecimal.ZERO) > 0) {
+
+        trade.setExitPrice(request.getExitPrice());
+        trade.setExitDate(request.getExitDate() != null
+                ? request.getExitDate()
+                : LocalDateTime.now());
+
+        // recalculatePnl() will:
+        // 1. Compute gross P&L from price diff × qty × lotSize
+        // 2. Deduct brokerage + taxes
+        // 3. Set outcomeTag = PROFIT / LOSS / BREAKEVEN from net P&L
+        // 4. Set actualRR
+        recalculatePnl(trade);
+
+    } else if (request.getOutcomeTag() != null) {
+        // Manual override (e.g. NO_TRADE) when no exit price
+        trade.setOutcomeTag(request.getOutcomeTag());
+    }
+
+    Trade saved = tradeRepository.save(trade);
+    return mapToResponse(saved);
+}
+
 
     // ─── Query Trades ─────────────────────────────────────────
 
@@ -211,24 +209,23 @@ public class TradeService {
                 .chartImageUrls(chartImages != null ? new ArrayList<>(chartImages) : new ArrayList<>())
                 .build();
 
-        // Auto-set outcomeTag when exit price provided
-        if (req.getExitPrice() != null) {
-            if (req.getPnlAbsolute() != null) {
-                if (req.getPnlAbsolute().compareTo(BigDecimal.ZERO) > 0) {
-                    trade.setOutcomeTag(Trade.OutcomeTag.PROFIT);
-                } else if (req.getPnlAbsolute().compareTo(BigDecimal.ZERO) < 0) {
-                    trade.setOutcomeTag(Trade.OutcomeTag.LOSS);
-                } else {
-                    trade.setOutcomeTag(Trade.OutcomeTag.BREAKEVEN);
-                }
-            }
+        // ── Calculate metrics (planned RR, risk amount) ─────────────────────────
+        calculateMetrics(trade, req);
+
+        // ── If exit price is provided, recalculate PnL and auto-set outcomeTag ──
+        // recalculatePnl() will ALWAYS override the outcomeTag with the correct
+        // value derived from actual price movement (after brokerage/taxes deducted)
+        if (req.getExitPrice() != null && req.getEntryPrice() != null) {
+            recalculatePnl(trade);
         }
 
         return trade;
     }
 
+    // ── REPLACE calculateMetrics() — planned RR and risk amount only ────────────
+
     private void calculateMetrics(Trade trade, TradeDTO.CreateRequest req) {
-        // Planned R:R — direction-aware
+        // Planned R:R
         if (req.getEntryPrice() != null && req.getStopLoss() != null && req.getTarget() != null) {
             BigDecimal risk = req.getEntryPrice().subtract(req.getStopLoss()).abs();
             BigDecimal reward = req.getTarget().subtract(req.getEntryPrice()).abs();
@@ -237,24 +234,20 @@ public class TradeService {
             }
         }
 
-        // Risk per trade (absolute)
-        if (req.getEntryPrice() != null && req.getStopLoss() != null
-                && req.getPositionSize() != null) {
+        // Risk per trade in absolute amount
+        if (req.getEntryPrice() != null && req.getStopLoss() != null && req.getPositionSize() != null) {
             boolean isFnO = req.getInstrumentType() == Trade.InstrumentType.FO_FUTURES
                     || req.getInstrumentType() == Trade.InstrumentType.FO_OPTIONS;
             int effectiveLotSize = (isFnO && req.getLotSize() != null && req.getLotSize() > 0)
                     ? req.getLotSize()
                     : 1;
-            BigDecimal riskPerShare = req.getEntryPrice().subtract(req.getStopLoss()).abs();
-            trade.setRiskPerTradeAbsolute(riskPerShare.multiply(
+            BigDecimal riskPerUnit = req.getEntryPrice().subtract(req.getStopLoss()).abs();
+            trade.setRiskPerTradeAbsolute(riskPerUnit.multiply(
                     BigDecimal.valueOf((long) req.getPositionSize() * effectiveLotSize)));
         }
-
-        // Auto-calculate PnL if exit price is provided
-        if (req.getExitPrice() != null) {
-            recalculatePnl(trade);
-        }
     }
+
+    // ── REPLACE recalculatePnl() — this is the source of truth for outcomeTag ──
 
     private void recalculatePnl(Trade trade) {
         if (trade.getExitPrice() == null || trade.getEntryPrice() == null)
@@ -264,36 +257,42 @@ public class TradeService {
                 ? trade.getExitPrice().subtract(trade.getEntryPrice())
                 : trade.getEntryPrice().subtract(trade.getExitPrice());
 
+        // lotSize only applies to F&O instruments
         boolean isFnO = trade.getInstrumentType() == Trade.InstrumentType.FO_FUTURES
                 || trade.getInstrumentType() == Trade.InstrumentType.FO_OPTIONS;
         int effectiveLotSize = (isFnO && trade.getLotSize() != null && trade.getLotSize() > 0)
                 ? trade.getLotSize()
                 : 1;
 
-        BigDecimal totalQuantity = BigDecimal.valueOf(
-                (long) trade.getPositionSize() * effectiveLotSize);
-        BigDecimal grossPnl = priceDiff.multiply(totalQuantity);
+        BigDecimal totalQty = BigDecimal.valueOf((long) trade.getPositionSize() * effectiveLotSize);
+        BigDecimal grossPnl = priceDiff.multiply(totalQty);
 
+        // Deduct transaction costs
         BigDecimal costs = BigDecimal.ZERO;
         if (trade.getBrokerage() != null)
             costs = costs.add(trade.getBrokerage());
         if (trade.getTaxes() != null)
             costs = costs.add(trade.getTaxes());
 
-        trade.setPnlAbsolute(grossPnl.subtract(costs));
-        trade.setPnlPercent(priceDiff.divide(trade.getEntryPrice(), 4, RoundingMode.HALF_UP)
-                .multiply(BigDecimal.valueOf(100)));
+        BigDecimal netPnl = grossPnl.subtract(costs);
+        trade.setPnlAbsolute(netPnl);
 
-        // Set outcome based on FINAL PnL (after costs), not just price movement
-        int cmp = trade.getPnlAbsolute().compareTo(BigDecimal.ZERO);
-        if (cmp > 0) {
-            trade.setOutcomeTag(Trade.OutcomeTag.PROFIT);
-        } else if (cmp < 0) {
-            trade.setOutcomeTag(Trade.OutcomeTag.LOSS); // ← catches BREAKEVEN+brokerage = LOSS
-        } else {
-            trade.setOutcomeTag(Trade.OutcomeTag.BREAKEVEN);
+        if (trade.getEntryPrice().compareTo(BigDecimal.ZERO) > 0) {
+            trade.setPnlPercent(priceDiff
+                    .divide(trade.getEntryPrice(), 4, RoundingMode.HALF_UP)
+                    .multiply(BigDecimal.valueOf(100)));
         }
 
+        // ── Auto-set outcomeTag from NET P&L (catches BREAKEVEN + brokerage = LOSS)
+        int cmp = netPnl.compareTo(BigDecimal.ZERO);
+        if (cmp > 0)
+            trade.setOutcomeTag(Trade.OutcomeTag.PROFIT);
+        else if (cmp < 0)
+            trade.setOutcomeTag(Trade.OutcomeTag.LOSS);
+        else
+            trade.setOutcomeTag(Trade.OutcomeTag.BREAKEVEN);
+
+        // ── Actual R:R
         if (trade.getStopLoss() != null) {
             BigDecimal risk = trade.getEntryPrice().subtract(trade.getStopLoss()).abs();
             if (risk.compareTo(BigDecimal.ZERO) > 0) {

@@ -4,26 +4,25 @@ import com.tradingjournal.dto.AnalyticsDTO;
 import com.tradingjournal.model.Trade;
 import com.tradingjournal.repository.TradeRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.*;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class AnalyticsService {
 
     private final TradeRepository tradeRepository;
 
-    @Cacheable(value = "analytics", key = "#userId + '-' + #dateFrom + '-' + #dateTo")
-    // REPLACE the entire getAnalytics() method
+    // ══════════════════════════════════════════════════════════
+    //  PUBLIC API
+    // ══════════════════════════════════════════════════════════
+
     public AnalyticsDTO getAnalytics(String userId, LocalDateTime dateFrom, LocalDateTime dateTo) {
         List<Trade> trades;
 
@@ -35,450 +34,438 @@ public class AnalyticsService {
                     userId, PageRequest.of(0, 10000)).getContent();
         }
 
-        // Include ALL trades that are closed — PROFIT, LOSS, or BREAKEVEN
-        // Also include trades with PnL set even if tag wasn't updated
-        Set<String> seenIds = new HashSet<>();
-        List<Trade> analyticsBase = new ArrayList<>();
+        // SIMPLE RULE: include every trade that is CLOSED (not OPEN, not NO_TRADE)
+        // No pnlAbsolute check — that was causing trades to be silently excluded
+        List<Trade> analyticsBase = trades.stream()
+                .filter(t -> t.getOutcomeTag() != null)
+                .filter(t -> t.getOutcomeTag() != Trade.OutcomeTag.OPEN)
+                .filter(t -> t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE)
+                .collect(Collectors.toList());
 
-        for (Trade t : trades) {
-            if (t.getId() == null)
-                continue;
-            if (seenIds.contains(t.getId()))
-                continue;
+        return buildAnalyticsDTO(analyticsBase);
+    }
 
-            boolean isClosed = t.getOutcomeTag() != null
-                    && t.getOutcomeTag() != Trade.OutcomeTag.OPEN
-                    && t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE;
+    // ══════════════════════════════════════════════════════════
+    //  DTO BUILDER
+    // ══════════════════════════════════════════════════════════
 
-            boolean hasPnl = t.getPnlAbsolute() != null
-                    && t.getPnlAbsolute().compareTo(BigDecimal.ZERO) != 0;
-
-            // Include if closed OR has any PnL (covers BREAKEVEN with brokerage costs)
-            if (isClosed || hasPnl) {
-                analyticsBase.add(t);
-                seenIds.add(t.getId());
-            }
-        }
-
+    private AnalyticsDTO buildAnalyticsDTO(List<Trade> trades) {
         return AnalyticsDTO.builder()
-                .totalTrades(analyticsBase.size())
-                .winningTrades((int) countByOutcome(analyticsBase, Trade.OutcomeTag.PROFIT))
-                .losingTrades((int) countByOutcome(analyticsBase, Trade.OutcomeTag.LOSS))
-                .breakevenTrades((int) countByOutcome(analyticsBase, Trade.OutcomeTag.BREAKEVEN))
-                .winRate(calcWinRate(analyticsBase))
-                .totalPnl(sumPnl(analyticsBase))
-                .avgProfitPerWin(avgPnlByOutcome(analyticsBase, Trade.OutcomeTag.PROFIT))
-                .avgLossPerLoss(avgPnlByOutcome(analyticsBase, Trade.OutcomeTag.LOSS))
-                .profitFactor(calcProfitFactor(analyticsBase))
-                .expectancy(calcExpectancy(analyticsBase))
-                .avgActualRR(calcAvgRR(analyticsBase))
-                .avgPlannedRR(calcAvgPlannedRR(analyticsBase))
-                .maxDrawdown(calcMaxDrawdown(analyticsBase))
-                .maxConsecutiveLosses(BigDecimal.valueOf(calcMaxConsecutive(analyticsBase, Trade.OutcomeTag.LOSS)))
-                .maxConsecutiveWins(BigDecimal.valueOf(calcMaxConsecutive(analyticsBase, Trade.OutcomeTag.PROFIT)))
-                .bestTrade(maxPnl(analyticsBase))
-                .worstTrade(minPnl(analyticsBase))
-                .avgDisciplineScore(calcAvgDisciplineScore(analyticsBase))
-                .setupPerformance(calcSetupPerformance(analyticsBase))
-                .emotionPerformance(calcEmotionPerformance(analyticsBase))
-                .instrumentPerformance(calcInstrumentPerformance(analyticsBase))
-                .timePerformance(calcTimePerformance(analyticsBase))
-                .monthlyPnl(calcMonthlyPnl(analyticsBase))
-                .repeatingMistakes(detectRepeatingMistakes(analyticsBase))
-                .bestSetups(detectBestSetups(analyticsBase))
-                .worstBehaviors(detectWorstBehaviors(analyticsBase))
-                .recommendations(generateRecommendations(analyticsBase))
-                .disciplineRating(calcDisciplineRating(analyticsBase))
-                .disciplineGrade(calcDisciplineGrade(analyticsBase))
-                .disciplineBreaks(detectDisciplineBreaks(analyticsBase))
-                .timeFrameUsage(calcTimeFrameUsage(analyticsBase))
-                .timeFramePerformance(calcTimeFramePerformance(analyticsBase))
+                .totalTrades(trades.size())
+                .winningTrades((int) countByOutcome(trades, Trade.OutcomeTag.PROFIT))
+                .losingTrades((int) countByOutcome(trades, Trade.OutcomeTag.LOSS))
+                .breakevenTrades((int) countByOutcome(trades, Trade.OutcomeTag.BREAKEVEN))
+                .winRate(calcWinRate(trades))
+                .totalPnl(sumPnl(trades))
+                .avgProfitPerWin(avgPnlByOutcome(trades, Trade.OutcomeTag.PROFIT))
+                .avgLossPerLoss(avgPnlByOutcome(trades, Trade.OutcomeTag.LOSS))
+                .profitFactor(calcProfitFactor(trades))
+                .expectancy(calcExpectancy(trades))
+                .avgActualRR(calcAvgRR(trades))
+                .avgPlannedRR(calcAvgPlannedRR(trades))
+                .maxDrawdown(calcMaxDrawdown(trades))
+                .maxConsecutiveLosses(BigDecimal.valueOf(calcMaxConsecutive(trades, Trade.OutcomeTag.LOSS)))
+                .maxConsecutiveWins(BigDecimal.valueOf(calcMaxConsecutive(trades, Trade.OutcomeTag.PROFIT)))
+                .bestTrade(maxPnl(trades))
+                .worstTrade(minPnl(trades))
+                .avgDisciplineScore(calcAvgDisciplineScore(trades))
+                .setupPerformance(calcSetupPerformance(trades))
+                .emotionPerformance(calcEmotionPerformance(trades))
+                .instrumentPerformance(calcInstrumentPerformance(trades))
+                .timePerformance(calcTimePerformance(trades))
+                .monthlyPnl(calcMonthlyPnl(trades))
+                .timeFrameUsage(calcTimeFrameUsage(trades))
+                .timeFramePerformance(calcTimeFramePerformance(trades))
+                .repeatingMistakes(detectRepeatingMistakes(trades))
+                .bestSetups(detectBestSetups(trades))
+                .worstBehaviors(detectWorstBehaviors(trades))
+                .recommendations(generateRecommendations(trades))
+                .disciplineRating(calcDisciplineRating(trades))
+                .disciplineGrade(calcDisciplineGrade(trades))
+                .disciplineBreaks(detectDisciplineBreaks(trades))
                 .build();
     }
 
-    // ─── Core Calculations ────────────────────────────────────
+    // ══════════════════════════════════════════════════════════
+    //  CORE CALCULATIONS — all null-safe
+    // ══════════════════════════════════════════════════════════
 
-    private BigDecimal calcWinRate(List<Trade> trades) {
-        if (trades.isEmpty())
-            return BigDecimal.ZERO;
-        // Only count trades with a defined outcome for win rate calculation
-        long decidedTrades = trades.stream()
-                .filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.PROFIT
-                        || t.getOutcomeTag() == Trade.OutcomeTag.LOSS
-                        || t.getOutcomeTag() == Trade.OutcomeTag.BREAKEVEN)
-                .count();
-        if (decidedTrades == 0)
-            return BigDecimal.ZERO;
-        long wins = countByOutcome(trades, Trade.OutcomeTag.PROFIT);
-        return BigDecimal.valueOf(wins * 100.0 / decidedTrades).setScale(2, RoundingMode.HALF_UP);
+    private long countByOutcome(List<Trade> trades, Trade.OutcomeTag tag) {
+        return trades.stream().filter(t -> t.getOutcomeTag() == tag).count();
     }
 
     private BigDecimal sumPnl(List<Trade> trades) {
         return trades.stream()
-                .filter(t -> t.getPnlAbsolute() != null)
                 .map(Trade::getPnlAbsolute)
+                .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private BigDecimal avgPnlByOutcome(List<Trade> trades, Trade.OutcomeTag outcome) {
-        List<Trade> filtered = trades.stream()
-                .filter(t -> t.getOutcomeTag() == outcome && t.getPnlAbsolute() != null)
-                .toList();
-        if (filtered.isEmpty())
-            return BigDecimal.ZERO;
-        BigDecimal total = filtered.stream().map(Trade::getPnlAbsolute).reduce(BigDecimal.ZERO, BigDecimal::add);
-        return total.divide(BigDecimal.valueOf(filtered.size()), 2, RoundingMode.HALF_UP);
+    private BigDecimal calcWinRate(List<Trade> trades) {
+        long decided = trades.stream()
+                .filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.PROFIT
+                          || t.getOutcomeTag() == Trade.OutcomeTag.LOSS
+                          || t.getOutcomeTag() == Trade.OutcomeTag.BREAKEVEN)
+                .count();
+        if (decided == 0) return BigDecimal.ZERO;
+        long wins = countByOutcome(trades, Trade.OutcomeTag.PROFIT);
+        return BigDecimal.valueOf(wins * 100.0 / decided)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calcProfitFactor(List<Trade> trades) {
         BigDecimal grossProfit = trades.stream()
-                .filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.PROFIT && t.getPnlAbsolute() != null)
                 .map(Trade::getPnlAbsolute)
+                .filter(Objects::nonNull)
+                .filter(p -> p.compareTo(BigDecimal.ZERO) > 0)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-
         BigDecimal grossLoss = trades.stream()
-                .filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.LOSS && t.getPnlAbsolute() != null)
-                .map(t -> t.getPnlAbsolute().abs())
+                .map(Trade::getPnlAbsolute)
+                .filter(Objects::nonNull)
+                .filter(p -> p.compareTo(BigDecimal.ZERO) < 0)
+                .map(BigDecimal::abs)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        if (grossLoss.compareTo(BigDecimal.ZERO) == 0)
-            return grossProfit.compareTo(BigDecimal.ZERO) > 0 ? BigDecimal.valueOf(999) : BigDecimal.ZERO;
+        if (grossLoss.compareTo(BigDecimal.ZERO) == 0) {
+            return grossProfit.compareTo(BigDecimal.ZERO) > 0
+                    ? BigDecimal.valueOf(999.99) : BigDecimal.ZERO;
+        }
         return grossProfit.divide(grossLoss, 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calcExpectancy(List<Trade> trades) {
-        if (trades.isEmpty())
-            return BigDecimal.ZERO;
-        BigDecimal winRate = calcWinRate(trades).divide(BigDecimal.valueOf(100), 4, RoundingMode.HALF_UP);
-        BigDecimal lossRate = BigDecimal.ONE.subtract(winRate);
-        BigDecimal avgWin = avgPnlByOutcome(trades, Trade.OutcomeTag.PROFIT);
-        BigDecimal avgLoss = avgPnlByOutcome(trades, Trade.OutcomeTag.LOSS).abs();
-        return winRate.multiply(avgWin).subtract(lossRate.multiply(avgLoss)).setScale(2, RoundingMode.HALF_UP);
+        if (trades.isEmpty()) return BigDecimal.ZERO;
+        return sumPnl(trades).divide(BigDecimal.valueOf(trades.size()), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal avgPnlByOutcome(List<Trade> trades, Trade.OutcomeTag tag) {
+        List<BigDecimal> pnls = trades.stream()
+                .filter(t -> t.getOutcomeTag() == tag)
+                .map(Trade::getPnlAbsolute)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        if (pnls.isEmpty()) return BigDecimal.ZERO;
+        BigDecimal sum = pnls.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sum.divide(BigDecimal.valueOf(pnls.size()), 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calcAvgRR(List<Trade> trades) {
         List<BigDecimal> rrs = trades.stream()
-                .filter(t -> t.getActualRR() != null)
                 .map(Trade::getActualRR)
-                .toList();
-        if (rrs.isEmpty())
-            return BigDecimal.ZERO;
-        BigDecimal sum = rrs.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        return sum.divide(BigDecimal.valueOf(rrs.size()), 2, RoundingMode.HALF_UP);
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        if (rrs.isEmpty()) return BigDecimal.ZERO;
+        return rrs.stream().reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal.valueOf(rrs.size()), 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calcAvgPlannedRR(List<Trade> trades) {
         List<BigDecimal> rrs = trades.stream()
-                .filter(t -> t.getPlannedRR() != null)
                 .map(Trade::getPlannedRR)
-                .toList();
-        if (rrs.isEmpty())
-            return BigDecimal.ZERO;
-        BigDecimal sum = rrs.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        return sum.divide(BigDecimal.valueOf(rrs.size()), 2, RoundingMode.HALF_UP);
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        if (rrs.isEmpty()) return BigDecimal.ZERO;
+        return rrs.stream().reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal.valueOf(rrs.size()), 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calcMaxDrawdown(List<Trade> trades) {
-        if (trades.isEmpty())
-            return BigDecimal.ZERO;
-        List<Trade> sorted = trades.stream()
-                .filter(t -> t.getPnlAbsolute() != null)
-                .sorted(Comparator.comparing(Trade::getTradeDate))
-                .toList();
-
         BigDecimal peak = BigDecimal.ZERO;
-        BigDecimal runningPnl = BigDecimal.ZERO;
+        BigDecimal equity = BigDecimal.ZERO;
         BigDecimal maxDD = BigDecimal.ZERO;
-
-        for (Trade t : sorted) {
-            runningPnl = runningPnl.add(t.getPnlAbsolute());
-            if (runningPnl.compareTo(peak) > 0)
-                peak = runningPnl;
-            BigDecimal dd = peak.subtract(runningPnl);
-            if (dd.compareTo(maxDD) > 0)
-                maxDD = dd;
+        for (Trade t : trades) {
+            if (t.getPnlAbsolute() == null) continue;
+            equity = equity.add(t.getPnlAbsolute());
+            if (equity.compareTo(peak) > 0) peak = equity;
+            BigDecimal dd = peak.subtract(equity);
+            if (dd.compareTo(maxDD) > 0) maxDD = dd;
         }
         return maxDD;
     }
 
-    private int calcMaxConsecutive(List<Trade> trades, Trade.OutcomeTag outcome) {
+    private BigDecimal maxPnl(List<Trade> trades) {
+        return trades.stream()
+                .map(Trade::getPnlAbsolute)
+                .filter(Objects::nonNull)
+                .max(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    private BigDecimal minPnl(List<Trade> trades) {
+        return trades.stream()
+                .map(Trade::getPnlAbsolute)
+                .filter(Objects::nonNull)
+                .min(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    private int calcMaxConsecutive(List<Trade> trades, Trade.OutcomeTag tag) {
         int max = 0, current = 0;
         for (Trade t : trades) {
-            if (t.getOutcomeTag() == outcome) {
+            if (t.getOutcomeTag() == tag) {
                 current++;
                 max = Math.max(max, current);
-            } else
+            } else {
                 current = 0;
+            }
         }
         return max;
     }
 
-    private BigDecimal maxPnl(List<Trade> trades) {
-        return trades.stream().filter(t -> t.getPnlAbsolute() != null)
-                .map(Trade::getPnlAbsolute).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-    }
-
-    private BigDecimal minPnl(List<Trade> trades) {
-        return trades.stream().filter(t -> t.getPnlAbsolute() != null)
-                .map(Trade::getPnlAbsolute).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-    }
-
     private BigDecimal calcAvgDisciplineScore(List<Trade> trades) {
         List<Integer> scores = trades.stream()
-                .filter(t -> t.getDisciplineScore() != null).map(Trade::getDisciplineScore).toList();
-        if (scores.isEmpty())
-            return BigDecimal.ZERO;
+                .map(Trade::getDisciplineScore)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        if (scores.isEmpty()) return BigDecimal.ZERO;
         return BigDecimal.valueOf(scores.stream().mapToInt(i -> i).average().orElse(0))
                 .setScale(1, RoundingMode.HALF_UP);
     }
 
-    // ─── Breakdown Analytics ──────────────────────────────────
+    // ══════════════════════════════════════════════════════════
+    //  BREAKDOWN MAPS — properly typed to match AnalyticsDTO
+    // ══════════════════════════════════════════════════════════
 
     private Map<String, AnalyticsDTO.SetupPerformance> calcSetupPerformance(List<Trade> trades) {
-        Map<Trade.SetupType, List<Trade>> grouped = trades.stream()
-                .filter(t -> t.getSetupType() != null)
-                .collect(Collectors.groupingBy(Trade::getSetupType));
-
+        Map<String, List<Trade>> grouped = new LinkedHashMap<>();
+        for (Trade t : trades) {
+            if (t.getSetupType() == null) continue;
+            grouped.computeIfAbsent(t.getSetupType().name(), k -> new ArrayList<>()).add(t);
+        }
         Map<String, AnalyticsDTO.SetupPerformance> result = new LinkedHashMap<>();
-        grouped.forEach((setup, ts) -> result.put(setup.name(), AnalyticsDTO.SetupPerformance.builder()
-                .setupType(setup.name())
-                .count(ts.size())
-                .winRate(calcWinRate(ts))
-                .avgPnl(avgPnlByOutcome(ts, Trade.OutcomeTag.PROFIT))
-                .avgRR(calcAvgRR(ts))
-                .totalPnl(sumPnl(ts))
-                .build()));
+        grouped.forEach((key, list) -> {
+            long wins = countByOutcome(list, Trade.OutcomeTag.PROFIT);
+            BigDecimal wr = list.isEmpty() ? BigDecimal.ZERO
+                    : BigDecimal.valueOf(wins * 100.0 / list.size()).setScale(1, RoundingMode.HALF_UP);
+            BigDecimal total = sumPnl(list);
+            BigDecimal avg = list.isEmpty() ? BigDecimal.ZERO
+                    : total.divide(BigDecimal.valueOf(list.size()), 2, RoundingMode.HALF_UP);
+            result.put(key, AnalyticsDTO.SetupPerformance.builder()
+                    .count(list.size()).winRate(wr).avgPnl(avg).totalPnl(total).build());
+        });
         return result;
     }
 
     private Map<String, AnalyticsDTO.EmotionPerformance> calcEmotionPerformance(List<Trade> trades) {
-        Map<Trade.EmotionalState, List<Trade>> grouped = trades.stream()
-                .filter(t -> t.getEmotionalState() != null)
-                .collect(Collectors.groupingBy(Trade::getEmotionalState));
-
+        Map<String, List<Trade>> grouped = new LinkedHashMap<>();
+        for (Trade t : trades) {
+            if (t.getEmotionalState() == null) continue;
+            grouped.computeIfAbsent(t.getEmotionalState().name(), k -> new ArrayList<>()).add(t);
+        }
         Map<String, AnalyticsDTO.EmotionPerformance> result = new LinkedHashMap<>();
-        grouped.forEach((emotion, ts) -> result.put(emotion.name(), AnalyticsDTO.EmotionPerformance.builder()
-                .emotionalState(emotion.name())
-                .count(ts.size())
-                .winRate(calcWinRate(ts))
-                .avgPnl(sumPnl(ts).divide(BigDecimal.valueOf(ts.size()), 2, RoundingMode.HALF_UP))
-                .build()));
+        grouped.forEach((key, list) -> {
+            long wins = countByOutcome(list, Trade.OutcomeTag.PROFIT);
+            BigDecimal wr = list.isEmpty() ? BigDecimal.ZERO
+                    : BigDecimal.valueOf(wins * 100.0 / list.size()).setScale(1, RoundingMode.HALF_UP);
+            BigDecimal total = sumPnl(list);
+            BigDecimal avg = list.isEmpty() ? BigDecimal.ZERO
+                    : total.divide(BigDecimal.valueOf(list.size()), 2, RoundingMode.HALF_UP);
+            result.put(key, AnalyticsDTO.EmotionPerformance.builder()
+                    .count(list.size()).winRate(wr).avgPnl(avg).build());
+        });
         return result;
     }
 
     private Map<String, AnalyticsDTO.InstrumentPerformance> calcInstrumentPerformance(List<Trade> trades) {
-        Map<String, List<Trade>> grouped = trades.stream()
-                .filter(t -> t.getInstrument() != null)
-                .collect(Collectors.groupingBy(Trade::getInstrument));
-
+        Map<String, List<Trade>> grouped = new LinkedHashMap<>();
+        for (Trade t : trades) {
+            if (t.getInstrument() == null) continue;
+            grouped.computeIfAbsent(t.getInstrument(), k -> new ArrayList<>()).add(t);
+        }
         Map<String, AnalyticsDTO.InstrumentPerformance> result = new LinkedHashMap<>();
-        grouped.forEach((inst, ts) -> result.put(inst, AnalyticsDTO.InstrumentPerformance.builder()
-                .instrument(inst).count(ts.size()).winRate(calcWinRate(ts))
-                .totalPnl(sumPnl(ts))
-                .avgPnl(sumPnl(ts).divide(BigDecimal.valueOf(ts.size()), 2, RoundingMode.HALF_UP))
-                .build()));
+        grouped.forEach((key, list) -> {
+            long wins = countByOutcome(list, Trade.OutcomeTag.PROFIT);
+            BigDecimal wr = list.isEmpty() ? BigDecimal.ZERO
+                    : BigDecimal.valueOf(wins * 100.0 / list.size()).setScale(1, RoundingMode.HALF_UP);
+            BigDecimal total = sumPnl(list);
+            result.put(key, AnalyticsDTO.InstrumentPerformance.builder()
+                    .count(list.size()).winRate(wr).totalPnl(total).build());
+        });
         return result;
     }
 
     private Map<String, AnalyticsDTO.TimePerformance> calcTimePerformance(List<Trade> trades) {
         Map<String, List<Trade>> grouped = new LinkedHashMap<>();
-        grouped.put("MORNING_9_11", new ArrayList<>());
-        grouped.put("MID_11_1", new ArrayList<>());
-        grouped.put("AFTERNOON_1_3", new ArrayList<>());
-        grouped.put("CLOSING_3_330", new ArrayList<>());
-
         for (Trade t : trades) {
-            if (t.getTradeDate() == null)
-                continue;
+            if (t.getTradeDate() == null) continue;
             int hour = t.getTradeDate().getHour();
-            int minute = t.getTradeDate().getMinute();
-            if (hour >= 9 && hour < 11)
-                grouped.get("MORNING_9_11").add(t);
-            else if (hour >= 11 && hour < 13)
-                grouped.get("MID_11_1").add(t);
-            else if (hour >= 13 && hour < 15)
-                grouped.get("AFTERNOON_1_3").add(t);
-            else if (hour == 15 && minute <= 30)
-                grouped.get("CLOSING_3_330").add(t);
+            String period;
+            if      (hour >= 9  && hour < 11) period = "MORNING_9_11";
+            else if (hour >= 11 && hour < 13) period = "MID_11_1";
+            else if (hour >= 13 && hour < 15) period = "AFTERNOON_1_3";
+            else if (hour >= 15 && hour < 16) period = "CLOSING_3_330";
+            else continue;
+            grouped.computeIfAbsent(period, k -> new ArrayList<>()).add(t);
         }
-
         Map<String, AnalyticsDTO.TimePerformance> result = new LinkedHashMap<>();
-        grouped.forEach((period, ts) -> {
-            if (!ts.isEmpty())
-                result.put(period, AnalyticsDTO.TimePerformance.builder()
-                        .period(period).count(ts.size()).winRate(calcWinRate(ts))
-                        .avgPnl(sumPnl(ts).divide(BigDecimal.valueOf(ts.size()), 2, RoundingMode.HALF_UP))
-                        .build());
+        grouped.forEach((key, list) -> {
+            long wins = countByOutcome(list, Trade.OutcomeTag.PROFIT);
+            BigDecimal wr = list.isEmpty() ? BigDecimal.ZERO
+                    : BigDecimal.valueOf(wins * 100.0 / list.size()).setScale(1, RoundingMode.HALF_UP);
+            BigDecimal total = sumPnl(list);
+            BigDecimal avg = list.isEmpty() ? BigDecimal.ZERO
+                    : total.divide(BigDecimal.valueOf(list.size()), 2, RoundingMode.HALF_UP);
+            result.put(key, AnalyticsDTO.TimePerformance.builder()
+                    .count(list.size()).winRate(wr).avgPnl(avg).build());
         });
         return result;
     }
 
     private Map<String, BigDecimal> calcMonthlyPnl(List<Trade> trades) {
-        return trades.stream()
-                .filter(t -> t.getPnlAbsolute() != null && t.getTradeDate() != null)
-                .collect(Collectors.groupingBy(
-                        t -> t.getTradeDate().getYear() + "-" + String.format("%02d", t.getTradeDate().getMonthValue()),
-                        TreeMap::new,
-                        Collectors.reducing(BigDecimal.ZERO, Trade::getPnlAbsolute, BigDecimal::add)));
-    }
-
-    // ─── Pattern Detection ────────────────────────────────────
-
-    private List<String> detectRepeatingMistakes(List<Trade> trades) {
-        List<String> mistakes = new ArrayList<>();
-
-        long fomoLosses = trades.stream()
-                .filter(t -> t.getEmotionalState() == Trade.EmotionalState.FOMO
-                        && t.getOutcomeTag() == Trade.OutcomeTag.LOSS)
-                .count();
-        if (fomoLosses >= 3)
-            mistakes.add("FOMO trades lead to losses (" + fomoLosses + " instances) — stop chasing");
-
-        long slBreaches = trades.stream().filter(t -> !t.isSlRespected()).count();
-        if (slBreaches >= 2)
-            mistakes.add("SL not respected in " + slBreaches + " trades — this is a capital destruction pattern");
-
-        long revengeTrades = trades.stream()
-                .filter(t -> t.getEmotionalState() == Trade.EmotionalState.REVENGE).count();
-        if (revengeTrades >= 2)
-            mistakes.add("Revenge trading detected (" + revengeTrades + " trades) — take a break after losses");
-
-        long earlyExits = trades.stream()
-                .filter(t -> t.getTags() != null && t.getTags().contains("#EarlyExit")).count();
-        if (earlyExits >= 3)
-            mistakes.add("Early exits in " + earlyExits + " trades — you're leaving money on the table");
-
-        return mistakes;
-    }
-
-    private List<String> detectBestSetups(List<Trade> trades) {
-        return trades.stream()
-                .filter(t -> t.getSetupType() != null)
-                .collect(Collectors.groupingBy(Trade::getSetupType))
-                .entrySet().stream()
-                .filter(e -> {
-                    List<Trade> ts = e.getValue();
-                    BigDecimal wr = calcWinRate(ts);
-                    return ts.size() >= 3 && wr.compareTo(BigDecimal.valueOf(60)) >= 0;
-                })
-                .sorted((a, b) -> calcWinRate(b.getValue()).compareTo(calcWinRate(a.getValue())))
-                .map(e -> e.getKey().name() + " (" + Math.round(calcWinRate(e.getValue()).doubleValue())
-                        + "% win rate, " + e.getValue().size() + " trades)")
-                .limit(3)
-                .collect(Collectors.toList());
-    }
-
-    private List<String> detectWorstBehaviors(List<Trade> trades) {
-        List<String> behaviors = new ArrayList<>();
-        Map<Trade.EmotionalState, List<Trade>> byEmotion = trades.stream()
-                .filter(t -> t.getEmotionalState() != null && t.getOutcomeTag() == Trade.OutcomeTag.LOSS)
-                .collect(Collectors.groupingBy(Trade::getEmotionalState));
-
-        byEmotion.entrySet().stream()
-                .filter(e -> e.getValue().size() >= 2)
-                .forEach(e -> behaviors
-                        .add("Trading while " + e.getKey().name() + " caused " + e.getValue().size() + " losses"));
-
-        return behaviors;
-    }
-
-    private List<String> generateRecommendations(List<Trade> trades) {
-        List<String> recs = new ArrayList<>();
-
-        BigDecimal winRate = calcWinRate(trades);
-        if (winRate.compareTo(BigDecimal.valueOf(40)) < 0) {
-            recs.add("Win rate below 40% — focus on setup quality over quantity, take only A-grade setups");
+        Map<String, BigDecimal> monthly = new TreeMap<>();
+        for (Trade t : trades) {
+            if (t.getTradeDate() == null || t.getPnlAbsolute() == null) continue;
+            String month = t.getTradeDate().getYear() + "-"
+                    + String.format("%02d", t.getTradeDate().getMonthValue());
+            monthly.merge(month, t.getPnlAbsolute(), BigDecimal::add);
         }
-        if (calcAvgRR(trades).compareTo(BigDecimal.valueOf(1)) < 0) {
-            recs.add(
-                    "Average R:R below 1:1 — you're risking more than you make. Revisit your targets or cut losses earlier");
-        }
-        long slBreaches = trades.stream().filter(t -> !t.isSlRespected()).count();
-        if (slBreaches > 0) {
-            recs.add("Stop moving your SL. It is not negotiable once set. Use alerts and hard stops.");
-        }
-        return recs;
+        return monthly;
     }
 
-    private int calcDisciplineRating(List<Trade> trades) {
-        if (trades.isEmpty())
-            return 0;
-        int score = 100;
-        long slBreaches = trades.stream().filter(t -> !t.isSlRespected()).count();
-        score -= (int) (slBreaches * 10);
-        long fomo = trades.stream().filter(t -> t.getEmotionalState() == Trade.EmotionalState.FOMO).count();
-        score -= (int) (fomo * 5);
-        return Math.max(0, Math.min(100, score));
-    }
-
-    private String calcDisciplineGrade(List<Trade> trades) {
-        int rating = calcDisciplineRating(trades);
-        if (rating >= 90)
-            return "A";
-        if (rating >= 75)
-            return "B";
-        if (rating >= 60)
-            return "C";
-        if (rating >= 40)
-            return "D";
-        return "F";
-    }
-
-    private List<String> detectDisciplineBreaks(List<Trade> trades) {
-        return trades.stream()
-                .filter(t -> t.getTags() != null && t.getTags().contains("#DisciplineBreak"))
-                .map(t -> t.getTradeId() + " — " + t.getInstrument() + " on " + t.getTradeDate())
-                .toList();
-    }
-
-    private long countByOutcome(List<Trade> trades, Trade.OutcomeTag outcome) {
-        return trades.stream().filter(t -> t.getOutcomeTag() == outcome).count();
-    }
+    // ══════════════════════════════════════════════════════════
+    //  TIME FRAME ANALYTICS (NEW)
+    // ══════════════════════════════════════════════════════════
 
     private Map<String, Integer> calcTimeFrameUsage(List<Trade> trades) {
         Map<String, Integer> usage = new LinkedHashMap<>();
         for (Trade t : trades) {
-            if (t.getTimeFrames() == null)
-                continue;
+            if (t.getTimeFrames() == null) continue;
             for (String tf : t.getTimeFrames()) {
                 usage.merge(tf, 1, Integer::sum);
             }
         }
-        // Sort by usage descending
+        // Sort by count descending
         return usage.entrySet().stream()
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
                 .collect(Collectors.toMap(
-                        Map.Entry::getKey, Map.Entry::getValue,
-                        (e1, e2) -> e1, LinkedHashMap::new));
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (e1, e2) -> e1,
+                        LinkedHashMap::new));
     }
 
-    private List<AnalyticsDTO.TimeFrameStat> calcTimeFramePerformance(List<Trade> trades) {
+    private List<AnalyticsDTO.TimeFramePerformance> calcTimeFramePerformance(List<Trade> trades) {
         Map<String, List<Trade>> byTf = new LinkedHashMap<>();
         for (Trade t : trades) {
-            if (t.getTimeFrames() == null)
-                continue;
+            if (t.getTimeFrames() == null) continue;
             for (String tf : t.getTimeFrames()) {
                 byTf.computeIfAbsent(tf, k -> new ArrayList<>()).add(t);
             }
         }
         return byTf.entrySet().stream().map(e -> {
             String tf = e.getKey();
-            List<Trade> tfTrades = e.getValue();
-            long wins = tfTrades.stream()
-                    .filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.PROFIT).count();
-            double winRate = tfTrades.isEmpty() ? 0 : (wins * 100.0 / tfTrades.size());
-            BigDecimal totalPnl = tfTrades.stream()
-                    .filter(t -> t.getPnlAbsolute() != null)
-                    .map(Trade::getPnlAbsolute)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal avgPnl = tfTrades.isEmpty() ? BigDecimal.ZERO
-                    : totalPnl.divide(BigDecimal.valueOf(tfTrades.size()), 2, RoundingMode.HALF_UP);
-            return AnalyticsDTO.TimeFrameStat.builder()
-                    .timeFrame(tf).trades(tfTrades.size())
-                    .winRate(winRate).avgPnl(avgPnl).totalPnl(totalPnl).build();
+            List<Trade> list = e.getValue();
+            long wins = countByOutcome(list, Trade.OutcomeTag.PROFIT);
+            BigDecimal wr = list.isEmpty() ? BigDecimal.ZERO
+                    : BigDecimal.valueOf(wins * 100.0 / list.size()).setScale(1, RoundingMode.HALF_UP);
+            BigDecimal total = sumPnl(list);
+            BigDecimal avg = list.isEmpty() ? BigDecimal.ZERO
+                    : total.divide(BigDecimal.valueOf(list.size()), 2, RoundingMode.HALF_UP);
+            return AnalyticsDTO.TimeFramePerformance.builder()
+                    .timeFrame(tf).trades(list.size()).winRate(wr).avgPnl(avg).totalPnl(total)
+                    .build();
         })
-                .sorted(Comparator.comparingInt(AnalyticsDTO.TimeFrameStat::getTrades).reversed())
+        .sorted(Comparator.comparingInt(AnalyticsDTO.TimeFramePerformance::getTrades).reversed())
+        .collect(Collectors.toList());
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  PATTERN DETECTION & DISCIPLINE
+    // ══════════════════════════════════════════════════════════
+
+    private List<String> detectRepeatingMistakes(List<Trade> trades) {
+        List<String> mistakes = new ArrayList<>();
+        long fomoCount = trades.stream()
+                .filter(t -> t.getEmotionalState() == Trade.EmotionalState.FOMO).count();
+        if (fomoCount >= 2)
+            mistakes.add("FOMO pattern detected: " + fomoCount + " FOMO trades — review entry criteria");
+        long slBreaches = trades.stream().filter(t -> !t.isSlRespected()).count();
+        if (slBreaches >= 2)
+            mistakes.add("SL breach pattern: " + slBreaches + " trades with SL ignored — risk management issue");
+        long revengeCount = trades.stream()
+                .filter(t -> t.getEmotionalState() == Trade.EmotionalState.REVENGE).count();
+        if (revengeCount >= 1)
+            mistakes.add("Revenge trading detected: " + revengeCount + " trade(s) — step away after losses");
+        return mistakes;
+    }
+
+    private List<String> detectBestSetups(List<Trade> trades) {
+        Map<String, AnalyticsDTO.SetupPerformance> setups = calcSetupPerformance(trades);
+        return setups.entrySet().stream()
+                .filter(e -> e.getValue().getCount() >= 2
+                          && e.getValue().getWinRate().compareTo(BigDecimal.valueOf(70)) >= 0)
+                .map(e -> e.getKey() + " setup: " + e.getValue().getWinRate() + "% win rate over "
+                        + e.getValue().getCount() + " trades")
                 .collect(Collectors.toList());
     }
 
+    private List<String> detectWorstBehaviors(List<Trade> trades) {
+        List<String> worst = new ArrayList<>();
+        long overtradingDays = trades.stream()
+                .filter(t -> t.getTags() != null && t.getTags().contains("#Overtrading")).count();
+        if (overtradingDays >= 2)
+            worst.add("Overtrading tendency: reduce position frequency");
+        long earlyExits = trades.stream()
+                .filter(t -> t.getTags() != null && t.getTags().contains("#EarlyExit")).count();
+        if (earlyExits >= 2)
+            worst.add("Early exit pattern in " + earlyExits + " trades — cutting winners short");
+        return worst;
+    }
+
+    private List<String> generateRecommendations(List<Trade> trades) {
+        List<String> recs = new ArrayList<>();
+        BigDecimal winRate = calcWinRate(trades);
+        if (winRate.compareTo(BigDecimal.valueOf(50)) < 0)
+            recs.add("Win rate below 50% — review setup selection and entry criteria");
+        BigDecimal pf = calcProfitFactor(trades);
+        if (pf.compareTo(BigDecimal.ONE) < 0 && !trades.isEmpty())
+            recs.add("Profit factor below 1.0 — losses exceed gains. Review position sizing");
+        long slBreaches = trades.stream().filter(t -> !t.isSlRespected()).count();
+        if (slBreaches > 0)
+            recs.add("Stop loss breached in " + slBreaches + " trade(s) — enforce SL discipline");
+        if (trades.size() >= 5) {
+            BigDecimal avgRR = calcAvgRR(trades);
+            if (avgRR.compareTo(BigDecimal.ONE) < 0 && avgRR.compareTo(BigDecimal.ZERO) > 0)
+                recs.add("Average R:R below 1:1 — aim for minimum 1.5:1 on entries");
+        }
+        return recs;
+    }
+
+    private List<String> detectDisciplineBreaks(List<Trade> trades) {
+        List<String> breaks = new ArrayList<>();
+        trades.stream()
+                .filter(t -> !t.isSlRespected())
+                .forEach(t -> breaks.add("SL moved/ignored on " + t.getInstrument()
+                        + " (" + (t.getTradeDate() != null ? t.getTradeDate().toLocalDate() : "?") + ")"));
+        trades.stream()
+                .filter(t -> t.getEmotionalState() == Trade.EmotionalState.REVENGE)
+                .forEach(t -> breaks.add("Revenge trade: " + t.getInstrument()));
+        trades.stream()
+                .filter(t -> t.getTags() != null && t.getTags().contains("#DisciplineBreak"))
+                .forEach(t -> breaks.add("Self-tagged discipline break: " + t.getInstrument()));
+        return breaks;
+    }
+
+    private int calcDisciplineRating(List<Trade> trades) {
+        if (trades.isEmpty()) return 100;
+        int score = 100;
+        long slBreaches = trades.stream().filter(t -> !t.isSlRespected()).count();
+        score -= (int)(slBreaches * 10);
+        long fomoTrades = trades.stream()
+                .filter(t -> t.getEmotionalState() == Trade.EmotionalState.FOMO
+                          || t.getEmotionalState() == Trade.EmotionalState.REVENGE).count();
+        score -= (int)(fomoTrades * 8);
+        long disciplineBreakTags = trades.stream()
+                .filter(t -> t.getTags() != null && t.getTags().contains("#DisciplineBreak")).count();
+        score -= (int)(disciplineBreakTags * 5);
+        return Math.max(0, Math.min(100, score));
+    }
+
+    private String calcDisciplineGrade(List<Trade> trades) {
+        int rating = calcDisciplineRating(trades);
+        if (rating >= 90) return "A";
+        if (rating >= 75) return "B";
+        if (rating >= 60) return "C";
+        if (rating >= 40) return "D";
+        return "F";
+    }
 }

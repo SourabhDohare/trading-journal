@@ -91,25 +91,29 @@ public class TradeDTO {
         private List<String> chartImageUrls;
     }
 
+    // ── REPLACE the UpdateRequest static class inside TradeDTO.java ──────────────
+
     @Data
     public static class UpdateRequest {
-        private BigDecimal exitPrice;
-        private LocalDateTime exitDate;
-        private Trade.OutcomeTag outcomeTag;
-        private BigDecimal pnlAbsolute;
-        private BigDecimal pnlPercent;
+        // ── Close trade fields ─────────────────────────────────
+        private BigDecimal exitPrice; // setting this CLOSES the trade
+        private LocalDateTime exitDate; // auto-set to now() if null when exitPrice is set
+        private Trade.OutcomeTag outcomeTag; // manual override only (e.g. NO_TRADE)
+
+        // ── Reflection fields ──────────────────────────────────
         private String whatWentRight;
         private String whatWentWrong;
         private String willRepeat;
         private String willAvoid;
         private Integer disciplineScore;
+
+        // ── Other updatable fields ────────────────────────────
         private List<String> tags;
         private List<String> timeFrames;
+        private List<String> chartImageUrls; // max 5
         private String notes;
         private boolean slRespected;
         private boolean isReviewed;
-        // Chart images can be updated too
-        private List<String> chartImageUrls;
     }
 
     // ─── Response DTOs ────────────────────────────────────────
@@ -138,7 +142,7 @@ public class TradeDTO {
         private BigDecimal actualRR;
         private Trade.SetupType setupType;
         private Trade.MarketContext marketContext;
-        private List<String> timeFrames;           // NEW
+        private List<String> timeFrames; // NEW
         private String whyTookTrade;
         private String edgeOrSetupLogic;
         private String confirmationUsed;
@@ -150,7 +154,7 @@ public class TradeDTO {
         private String willAvoid;
         private Integer disciplineScore;
         private List<String> tags;
-        private List<String> chartImageUrls;       // base64 or URLs
+        private List<String> chartImageUrls; // base64 or URLs
         private String notes;
         private String exchange;
         private BigDecimal brokerage;
