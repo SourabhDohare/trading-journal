@@ -103,6 +103,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
                 step="0.05"
               />
             </div>
+            <!-- Stop Loss -->
             <div class="form-group">
               <label
                 >Stop Loss * <span class="hint">Non-negotiable</span></label
@@ -114,10 +115,18 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
                 class="form-input sl-input"
                 step="0.05"
               />
-              <span class="error" *ngIf="submitted && f['stopLoss'].errors"
-                >SL is mandatory</span
+              <span
+                class="error"
+                *ngIf="submitted && f['stopLoss'].errors?.['required']"
               >
+                SL is mandatory — no SL, no trade
+              </span>
+              <span class="hint-warn" *ngIf="slDirectionWarning()">
+                ⚠ {{ slDirectionWarning() }}
+              </span>
             </div>
+
+            <!-- Target -->
             <div class="form-group">
               <label>Target *</label>
               <input
@@ -126,7 +135,16 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
                 placeholder="0.00"
                 class="form-input"
                 step="0.05"
+                [class.invalid-field]="
+                  submitted && f['target'].errors?.['targetInvalid']
+                "
               />
+              <span
+                class="error"
+                *ngIf="submitted && f['target'].errors?.['targetInvalid']"
+              >
+                {{ targetError() }}
+              </span>
             </div>
             <div class="form-group">
               <label>
@@ -564,6 +582,13 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
   `,
   styles: [
     `
+      .hint-warn {
+        font-size: 11px;
+        color: #f59e0b;
+      }
+      .invalid-field {
+        border-color: #ef4444 !important;
+      }
       .page {
         padding: 32px;
         max-width: 900px;
@@ -1248,7 +1273,31 @@ export class TradeFormComponent implements OnInit {
       slRespected: [true],
     });
 
-    // Auto-set outcome when exit price is filled
+    // Re-validate target whenever entry or direction changes
+    this.form
+      .get("entryPrice")
+      ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
+      .subscribe(() => {
+        this.form.get("target")?.updateValueAndValidity();
+        // Re-trigger exit price calc if exit already set
+        const exit = this.form.get("exitPrice")?.value;
+        if (exit && +exit > 0) {
+          this.form.get("exitPrice")?.setValue(exit, { emitEvent: true });
+        }
+      });
+
+    this.form
+      .get("direction")
+      ?.valueChanges.pipe(distinctUntilChanged())
+      .subscribe(() => {
+        this.form.get("target")?.updateValueAndValidity();
+        const exit = this.form.get("exitPrice")?.value;
+        if (exit && +exit > 0) {
+          this.form.get("exitPrice")?.setValue(exit, { emitEvent: true });
+        }
+      });
+
+    // Auto-set and lock outcome from exit price
     this.form
       .get("exitPrice")
       ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
@@ -1267,24 +1316,6 @@ export class TradeFormComponent implements OnInit {
           oc?.enable();
           oc?.setValue("OPEN");
         }
-      });
-
-    this.form
-      .get("entryPrice")
-      ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
-      .subscribe(() => {
-        const exit = this.form.get("exitPrice")?.value;
-        if (exit && +exit > 0)
-          this.form.get("exitPrice")?.setValue(exit, { emitEvent: true });
-      });
-
-    this.form
-      .get("direction")
-      ?.valueChanges.pipe(distinctUntilChanged())
-      .subscribe(() => {
-        const exit = this.form.get("exitPrice")?.value;
-        if (exit && +exit > 0)
-          this.form.get("exitPrice")?.setValue(exit, { emitEvent: true });
       });
   }
 
@@ -1408,10 +1439,68 @@ export class TradeFormComponent implements OnInit {
     this.chartImages.update((imgs) => imgs.filter((_, i) => i !== index));
   }
 
+  // ─── Direction-aware validation helpers ───────────────────────────────────
+
+  // Returns a warning string if SL is on the "wrong" side (non-blocking)
+  slDirectionWarning(): string | null {
+    const entry = +this.f["entryPrice"].value || 0;
+    const sl = +this.f["stopLoss"].value || 0;
+    const dir = this.f["direction"].value;
+    if (!entry || !sl) return null;
+
+    if (dir === "BUY" && sl >= entry) {
+      return "SL is above or equal to entry for a BUY — are you sure?";
+    }
+    if (dir === "SELL" && sl <= entry) {
+      return "SL is below or equal to entry for a SELL — are you sure?";
+    }
+    return null;
+  }
+
+  // Returns error text if target is on wrong side — this IS blocking on submit
+  targetError(): string {
+    const dir = this.f["direction"].value;
+    if (dir === "BUY")
+      return "For BUY trades, target must be above entry price.";
+    if (dir === "SELL")
+      return "For SELL trades, target must be below entry price.";
+    return "Invalid target.";
+  }
+
+  // Validates target on submit — call this inside submit() before API call
+  private validateTargetDirection(): boolean {
+    const entry = +this.f["entryPrice"].value || 0;
+    const target = +this.f["target"].value || 0;
+    const dir = this.f["direction"].value;
+    if (!entry || !target) return true; // let required validators catch it
+
+    if (dir === "BUY" && target <= entry) {
+      this.f["target"].setErrors({ targetInvalid: true });
+      return false;
+    }
+    if (dir === "SELL" && target >= entry) {
+      this.f["target"].setErrors({ targetInvalid: true });
+      return false;
+    }
+    // Clear the custom error if it was previously set
+    const existing = this.f["target"].errors;
+    if (existing?.["targetInvalid"]) {
+      const { targetInvalid, ...rest } = existing;
+      this.f["target"].setErrors(Object.keys(rest).length ? rest : null);
+    }
+    return true;
+  }
   // ─── Submit ────────────────────────────────────────────
   submit() {
     this.submitted = true;
     this.apiError.set("");
+
+    // Run direction-aware target validation first
+    const targetOk = this.validateTargetDirection();
+    if (!targetOk) {
+      this.apiError.set(this.targetError());
+      return;
+    }
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -1424,7 +1513,6 @@ export class TradeFormComponent implements OnInit {
 
     this.loading.set(true);
     const raw = this.form.getRawValue();
-
     const payload = {
       ...raw,
       tags: this.selectedTags(),

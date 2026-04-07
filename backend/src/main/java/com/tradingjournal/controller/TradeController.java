@@ -62,7 +62,7 @@ public class TradeController {
             @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable String tradeId,
             @RequestBody TradeDTO.UpdateRequest request) {
-        return ResponseEntity.ok(tradeService.updateTrade(principal.getId(), tradeId, request));
+        return ResponseEntity.ok(tradeService.updateTrade(tradeId, principal.getId(), request));
     }
 
     @DeleteMapping("/{tradeId}")
