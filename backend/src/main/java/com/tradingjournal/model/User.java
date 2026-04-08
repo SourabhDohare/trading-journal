@@ -21,46 +21,61 @@ public class User {
     @Id
     private String id;
 
-    // ─── Auth ─────────────────────────────────────────────
+    // ─── Auth (KEPT EXACTLY as original — DO NOT rename) ──────────────────
     @Indexed(unique = true)
     private String email;
-    private String passwordHash;
-    private Role   role;
 
-    // ─── Personal Info ─────────────────────────────────────
-    private String fullName;
-    private String displayName;        // shown in UI
+    // UserPrincipal.java calls user.getPassword() — field MUST stay as "password"
+    private String password;
+
+    private Role role;
+
+    // ─── Original name fields (AuthService calls getFirstName/getLastName) ─
+    private String firstName;
+    private String lastName;
+    private String timezone;    // AuthService references this
+
+    // ─── NEW: unified full name for display (profile page uses this) ────────
+    private String fullName;       // e.g. "Sourabh Dohare"
+    private String displayName;    // e.g. "SD" — shown in sidebar
+
+    // ─── NEW: Contact ──────────────────────────────────────────────────────
     private String phone;
     private String city;
     private String country;
-    private String avatarBase64;       // Base64 profile picture
+    private String avatarBase64;   // Base64 profile picture (max ~200KB)
 
-    // ─── Trading Identity ──────────────────────────────────
-    private ExperienceLevel  experienceLevel;   // BEGINNER / INTERMEDIATE / ADVANCED / PROFESSIONAL
-    private TradingStyle     primaryStyle;      // INTRADAY / SWING / POSITIONAL / ALL
-    private List<String>     marketsTraded;     // EQUITY, F&O, CRYPTO, COMMODITY, FOREX, INDEX
-    private List<String>     platformsUsed;     // Zerodha, Upstox, Angel One, etc.
+    // ─── NEW: Trading Identity ─────────────────────────────────────────────
+    private ExperienceLevel  experienceLevel;
+    private TradingStyle     primaryStyle;
+    private List<String>     marketsTraded;
+    private List<String>     platformsUsed;
     private String           primaryBroker;
 
-    // ─── Capital & Risk Profile ────────────────────────────
-    private BigDecimal tradingCapital;          // total capital deployed for trading
-    private BigDecimal riskPerTradePercent;     // default risk per trade (%)
-    private BigDecimal maxDrawdownTolerance;    // max DD they can handle (%)
-    private BigDecimal targetMonthlyReturnPct;  // monthly return goal (%)
-    private Integer    avgTradesPerMonth;        // approximate trading frequency
+    // ─── NEW: Capital & Risk ───────────────────────────────────────────────
+    private BigDecimal tradingCapital;
+    private BigDecimal riskPerTradePercent;
+    private BigDecimal maxDrawdownTolerance;
+    private BigDecimal targetMonthlyReturnPct;
+    private Integer    avgTradesPerMonth;
 
-    // ─── Goals & Motivation ────────────────────────────────
-    private String  tradingGoal;               // "Full-time income", "Supplement salary", etc.
-    private String  biggestWeakness;           // Self-reported weakness
-    private String  whyImproving;              // What they want to get better at
+    // ─── NEW: Goals ────────────────────────────────────────────────────────
+    private String tradingGoal;
+    private String biggestWeakness;
+    private String whyImproving;
 
-    // ─── Account Settings ──────────────────────────────────
-    private boolean strictMode;                // reject incomplete trade entries
+    // ─── NEW: Preferences ─────────────────────────────────────────────────
     private boolean emailNotifications;
     private boolean weeklyReportEmail;
 
-    // ─── Account Status ────────────────────────────────────
-    private PlanType planType;                 // FREE / PRO / ENTERPRISE
+    // ─── Original config (AuthService calls getTradingConfig()) ───────────
+    private TradingConfig tradingConfig;
+
+    // strictMode lives in TradingConfig AND directly (used by TradeService)
+    private boolean strictMode;
+
+    // ─── Account status ────────────────────────────────────────────────────
+    private PlanType planType;
     private boolean  active;
 
     @CreatedDate
@@ -69,27 +84,37 @@ public class User {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    // ─── Enums ─────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════
+    //  Enums
+    // ══════════════════════════════════════════════════════════════
+
     public enum Role { TRADER, MANAGER, ADMIN }
 
     public enum ExperienceLevel {
-        BEGINNER,       // < 1 year
-        INTERMEDIATE,   // 1–3 years
-        ADVANCED,       // 3–7 years
-        PROFESSIONAL    // 7+ years / full-time
+        BEGINNER, INTERMEDIATE, ADVANCED, PROFESSIONAL
     }
 
     public enum TradingStyle { INTRADAY, SWING, POSITIONAL, ALL }
 
     public enum PlanType { FREE, PRO, ENTERPRISE }
 
-    // ─── Embedded config (kept for backward compat) ────────
+    // ─── TradingConfig (kept for backward compat — AuthService uses it) ────
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
+    @Builder
     public static class TradingConfig {
-        private boolean strictMode;
+        private boolean    strictMode;
         private BigDecimal defaultRiskPercent;
         private BigDecimal capitalDeployed;
+    }
+
+    // ─── Helper: get effective display name ───────────────────────────────
+    // Used in places that need a user-facing name
+    public String getEffectiveDisplayName() {
+        if (displayName != null && !displayName.isBlank()) return displayName;
+        if (fullName    != null && !fullName.isBlank())    return fullName;
+        if (firstName   != null && !firstName.isBlank())  return firstName + (lastName != null ? " " + lastName : "");
+        return email;
     }
 }
