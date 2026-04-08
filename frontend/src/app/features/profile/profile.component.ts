@@ -5,6 +5,7 @@ import { FormsModule } from "@angular/forms";
 import { HttpClient } from "@angular/common/http";
 import { RouterLink } from "@angular/router";
 import { environment } from "../../../environments/environment";
+import { AuthService } from '../../core/services/auth.service';
 
 interface UserProfile {
   id: string;
@@ -1046,7 +1047,10 @@ export class ProfileComponent implements OnInit {
     "Emotional Decisions",
   ];
 
-  constructor(private http: HttpClient) {}
+constructor(
+  private http: HttpClient,
+  private authService: AuthService   // ← ADD THIS
+) {}
 
   ngOnInit() {
     this.http.get<UserProfile>(`${environment.apiUrl}/profile`).subscribe({
@@ -1083,30 +1087,40 @@ export class ProfileComponent implements OnInit {
     this.form.weeklyReportEmail = p.weeklyReportEmail ?? true;
   }
 
-  save() {
-    if (this.saving()) return;
-    this.saving.set(true);
-    this.saveError.set("");
+  // ─── REPLACE save() ────────────────────────────────────────────────────────
+save() {
+  if (this.saving()) return;
+  this.saving.set(true);
+  this.saveError.set('');
 
-    const payload = { ...this.form };
+  const payload = { ...this.form };
 
-    this.http
-      .put<UserProfile>(`${environment.apiUrl}/profile`, payload)
-      .subscribe({
-        next: (updated) => {
-          this.profile.set(updated);
-          this.saving.set(false);
-          this.showToast("Profile saved successfully ✓", "success");
-        },
-        error: (err) => {
-          this.saving.set(false);
-          const msg =
-            err?.error?.message || "Failed to save. Please try again.";
-          this.saveError.set(msg);
-          this.showToast(msg, "error");
-        },
+  this.http.put<any>(`${environment.apiUrl}/profile`, payload).subscribe({
+    next: (updated) => {
+      this.profile.set(updated);
+      this.saving.set(false);
+
+      // ── KEY FIX: push avatar + displayName into AuthService
+      // so the sidebar reflects the new avatar immediately and
+      // persists across page navigation without re-fetching
+      this.authService.updateLocalUser({
+        displayName:  updated.displayName || updated.fullName || updated.email,
+        fullName:     updated.fullName,
+        avatarBase64: updated.avatarBase64 || undefined,
+        planType:     updated.planType,
       });
-  }
+
+      this.showToast('Profile saved successfully ✓', 'success');
+    },
+    error: (err) => {
+      this.saving.set(false);
+      const msg = err?.error?.message || 'Failed to save. Please try again.';
+      this.saveError.set(msg);
+      this.showToast(msg, 'error');
+    }
+  });
+}
+
 
   // ─── Avatar upload ─────────────────────────────────────
   triggerAvatarUpload() {
@@ -1116,24 +1130,27 @@ export class ProfileComponent implements OnInit {
     input?.click();
   }
 
-  onAvatarSelected(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-    if (file.size > 200 * 1024) {
-      this.showToast(
-        "Avatar must be under 200KB. Please compress it first.",
-        "error",
-      );
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64 = e.target?.result as string;
-      this.avatarPreview.set(base64);
-      this.form.avatarBase64 = base64;
-    };
-    reader.readAsDataURL(file);
+  // ─── REPLACE onAvatarSelected() ───────────────────────────────────────────
+onAvatarSelected(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  if (file.size > 200 * 1024) {
+    this.showToast('Avatar must be under 200KB. Please compress it first.', 'error');
+    return;
   }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const base64 = e.target?.result as string;
+    this.avatarPreview.set(base64);
+    this.form.avatarBase64 = base64;
+
+    // ── Immediately update sidebar avatar while still on profile page
+    // (full save happens when user clicks Save Profile)
+    this.authService.updateLocalUser({ avatarBase64: base64 });
+  };
+  reader.readAsDataURL(file);
+}
+
 
   // ─── Helpers ───────────────────────────────────────────
   toggleList(list: string[], item: string) {

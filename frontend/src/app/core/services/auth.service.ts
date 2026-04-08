@@ -5,72 +5,117 @@ import { Router } from '@angular/router';
 import { tap } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
 
-export interface User {
+export interface AuthUser {
   id: string;
   email: string;
-  firstName: string;
-  lastName: string;
   role: string;
-  strictMode: boolean;
-  timezone: string;
+  // Profile fields — populated after login + profile fetch
+  displayName?: string;
+  fullName?: string;
+  avatarBase64?: string;
+  planType?: string;
 }
 
-export interface AuthResponse {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  user: User;
-}
+interface LoginRequest  { email: string; password: string; }
+interface RegisterRequest { email: string; password: string; firstName: string; lastName: string; }
+interface AuthResponse  { token: string; refreshToken?: string; user: AuthUser; }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  private readonly TOKEN_KEY = 'tj_access_token';
-  private readonly REFRESH_KEY = 'tj_refresh_token';
-  private readonly USER_KEY = 'tj_user';
 
-  private _currentUser = signal<User | null>(this.loadUser());
-  currentUser = this._currentUser.asReadonly();
-  isAuthenticated = computed(() => !!this._currentUser());
+  private readonly TOKEN_KEY   = 'tp_token';
+  private readonly USER_KEY    = 'tp_user';
+  private readonly apiBase     = environment.apiUrl;
 
-  constructor(private http: HttpClient, private router: Router) {}
+  // ─── Signals ───────────────────────────────────────────────────
+  currentUser  = signal<AuthUser | null>(this.loadStoredUser());
+  isLoggedIn   = computed(() => !!this.currentUser());
+  token        = signal<string | null>(localStorage.getItem(this.TOKEN_KEY));
 
+  constructor(private http: HttpClient, private router: Router) {
+    // On startup, if we have a token but no avatar yet, fetch the full profile
+    if (this.token() && this.currentUser()) {
+      this.refreshProfileInBackground();
+    }
+  }
+
+  // ─── Login ──────────────────────────────────────────────────────
   login(email: string, password: string) {
-    return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/login`, { email, password })
-      .pipe(tap(res => this.setSession(res)));
+    return this.http.post<AuthResponse>(`${this.apiBase}/auth/login`, { email, password })
+      .pipe(tap(res => {
+        this.storeAuth(res);
+        // Fetch full profile after login to get avatar, displayName etc.
+        this.refreshProfileInBackground();
+      }));
   }
 
-  register(firstName: string, lastName: string, email: string, password: string) {
-    return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/register`, { firstName, lastName, email, password })
-      .pipe(tap(res => this.setSession(res)));
+  // ─── Register ───────────────────────────────────────────────────
+  register(data: RegisterRequest) {
+    return this.http.post<AuthResponse>(`${this.apiBase}/auth/register`, data)
+      .pipe(tap(res => this.storeAuth(res)));
   }
 
+  // ─── Logout ─────────────────────────────────────────────────────
   logout() {
     localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.REFRESH_KEY);
     localStorage.removeItem(this.USER_KEY);
-    this._currentUser.set(null);
+    this.currentUser.set(null);
+    this.token.set(null);
     this.router.navigate(['/auth/login']);
+  }
+
+  // ─── Called by ProfileComponent after saving profile ────────────
+  // Updates the in-memory + localStorage user so sidebar reflects changes immediately
+  updateLocalUser(patch: Partial<AuthUser>) {
+    const current = this.currentUser();
+    if (!current) return;
+    const updated = { ...current, ...patch };
+    this.currentUser.set(updated);
+    localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
   }
 
   getToken(): string | null {
     return localStorage.getItem(this.TOKEN_KEY);
   }
 
-  refreshToken() {
-    const refreshToken = localStorage.getItem(this.REFRESH_KEY);
-    return this.http.post<AuthResponse>(`${environment.apiUrl}/auth/refresh`, { refreshToken })
-      .pipe(tap(res => this.setSession(res)));
+  // ─── Private helpers ────────────────────────────────────────────
+  private storeAuth(res: AuthResponse) {
+    localStorage.setItem(this.TOKEN_KEY, res.token);
+    const user: AuthUser = {
+      id:    res.user.id,
+      email: res.user.email,
+      role:  res.user.role,
+      displayName: res.user.displayName || res.user.fullName || res.user.email,
+      fullName:    res.user.fullName,
+      avatarBase64: res.user.avatarBase64,
+      planType:    res.user.planType,
+    };
+    localStorage.setItem(this.USER_KEY, JSON.stringify(user));
+    this.currentUser.set(user);
+    this.token.set(res.token);
   }
 
-  private setSession(res: AuthResponse) {
-    localStorage.setItem(this.TOKEN_KEY, res.accessToken);
-    localStorage.setItem(this.REFRESH_KEY, res.refreshToken);
-    localStorage.setItem(this.USER_KEY, JSON.stringify(res.user));
-    this._currentUser.set(res.user);
+  private loadStoredUser(): AuthUser | null {
+    try {
+      const raw = localStorage.getItem(this.USER_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
   }
 
-  private loadUser(): User | null {
-    const raw = localStorage.getItem(this.USER_KEY);
-    return raw ? JSON.parse(raw) : null;
+  // Fetches /profile in the background and patches currentUser with avatar + displayName
+  private refreshProfileInBackground() {
+    this.http.get<any>(`${this.apiBase}/profile`).subscribe({
+      next: (profile) => {
+        this.updateLocalUser({
+          displayName:  profile.displayName || profile.fullName || profile.email,
+          fullName:     profile.fullName,
+          avatarBase64: profile.avatarBase64 || undefined,
+          planType:     profile.planType,
+        });
+      },
+      error: () => {} // silently ignore — user is still logged in
+    });
   }
 }

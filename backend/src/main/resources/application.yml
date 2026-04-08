@@ -17,7 +17,7 @@ spring:
   main:
     lazy-initialization: true   # ← beans initialize on first use, not at startup
 
-    
+
   servlet:
     multipart:
       max-file-size: 10MB
@@ -25,6 +25,21 @@ spring:
 
   cache:
     type: simple
+  
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}        # Set in Render env vars
+    password: ${MAIL_PASSWORD}        # Gmail App Password (not account password)
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
 server:
   port: ${PORT:8080}
