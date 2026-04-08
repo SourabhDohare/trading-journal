@@ -56,7 +56,8 @@ export const routes: Routes = [
           import("./features/profile/profile.component").then(
             (m) => m.ProfileComponent,
           ),
-        canActivate: [AuthGuard],
+        // ✅ use authGuard (function) not AuthGuard (class) — matches the import above
+        canActivate: [authGuard],
       },
     ],
   },

@@ -1,8 +1,3 @@
-
-
-// ══════════════════════════════════════════════════════════════════
-//  UserProfileController.java
-// ══════════════════════════════════════════════════════════════════
 package com.tradingjournal.controller;
 
 import com.tradingjournal.dto.UserProfileDTO;
