@@ -22,19 +22,22 @@ interface RegisterRequest {
   lastName: string;
 }
 
-// Matches JwtTokenProvider: generateToken() + generateRefreshToken()
+// Exact structure your backend returns — confirmed from console:
+// { accessToken, refreshToken, tokenType, expiresIn, user }
 interface AuthResponse {
-  token:        string;         // primary JWT — set by backend AuthService
-  refreshToken?: string;        // from generateRefreshToken()
-  user:         AuthUser;
+  accessToken:   string;
+  refreshToken?: string;
+  tokenType?:    string;   // "Bearer"
+  expiresIn?:    number;   // 86400000
+  user:          AuthUser;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
 
-  private readonly TOKEN_KEY  = 'tp_token';
-  private readonly USER_KEY   = 'tp_user';
-  private readonly apiBase    = environment.apiUrl;
+  private readonly TOKEN_KEY = 'tp_token';
+  private readonly USER_KEY  = 'tp_user';
+  private readonly apiBase   = environment.apiUrl;
 
   currentUser     = signal<AuthUser | null>(this.loadStoredUser());
   isLoggedIn      = computed(() => !!this.currentUser() && !!this.getToken());
@@ -52,8 +55,8 @@ export class AuthService {
     ).pipe(tap(res => this.storeAuth(res)));
   }
 
-  // Supports old 4-arg style: register(firstName, lastName, email, password)
-  // AND new object style: register({ email, password, firstName, lastName })
+  // Supports old 4-arg: register(firstName, lastName, email, password)
+  // AND new object style
   register(
     emailOrRequest: string | RegisterRequest,
     password?: string,
@@ -70,15 +73,13 @@ export class AuthService {
   }
 
   logout() {
-    // Clean up all possible legacy key names
     ['tp_token', 'token', 'access_token', 'jwt_token'].forEach(k => localStorage.removeItem(k));
     localStorage.removeItem(this.USER_KEY);
     this.currentUser.set(null);
     this.router.navigate(['/auth/login']);
   }
 
-  // Called by auth.interceptor.ts on every request
-  // Rejects the literal string "undefined" which can be stored when res.token is undefined
+  // Called by auth.interceptor.ts — validates token starts with 'eyJ' (all JWTs do)
   getToken(): string | null {
     const t = localStorage.getItem(this.TOKEN_KEY);
     return (t && t !== 'undefined' && t !== 'null' && t.startsWith('eyJ')) ? t : null;
@@ -93,11 +94,13 @@ export class AuthService {
   }
 
   private storeAuth(res: AuthResponse) {
-    const token = res.token;
-    if (!token || token === 'undefined') {
-      console.error('Backend did not return a valid JWT. Response:', res);
+    // Backend confirmed to return: accessToken (not token)
+    const token = res.accessToken;
+    if (!token || !token.startsWith('eyJ')) {
+      console.error('Invalid JWT from backend:', res);
       return;
     }
+
     localStorage.setItem(this.TOKEN_KEY, token);
 
     const user: AuthUser = {
@@ -112,7 +115,6 @@ export class AuthService {
     localStorage.setItem(this.USER_KEY, JSON.stringify(user));
     this.currentUser.set(user);
 
-    // Fetch full profile to get avatar + displayName after login
     this.refreshProfileInBackground();
   }
 
