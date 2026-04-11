@@ -9,53 +9,92 @@ export interface AuthUser {
   id: string;
   email: string;
   role: string;
-  // Profile fields — populated after login + profile fetch
   displayName?: string;
   fullName?: string;
   avatarBase64?: string;
   planType?: string;
 }
 
-interface LoginRequest  { email: string; password: string; }
-interface RegisterRequest { email: string; password: string; firstName: string; lastName: string; }
-interface AuthResponse  { token: string; refreshToken?: string; user: AuthUser; }
+interface RegisterRequest {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+}
+
+interface AuthResponse {
+  token: string;
+  refreshToken?: string;
+  user: AuthUser;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
 
-  private readonly TOKEN_KEY   = 'tp_token';
-  private readonly USER_KEY    = 'tp_user';
-  private readonly apiBase     = environment.apiUrl;
+  private readonly TOKEN_KEY = 'tp_token';
+  private readonly USER_KEY  = 'tp_user';
+  private readonly apiBase   = environment.apiUrl;
 
-  // ─── Signals ───────────────────────────────────────────────────
-  currentUser  = signal<AuthUser | null>(this.loadStoredUser());
-  isLoggedIn   = computed(() => !!this.currentUser());
-  token        = signal<string | null>(localStorage.getItem(this.TOKEN_KEY));
+  // ─── Signals ────────────────────────────────────────────────────
+  currentUser = signal<AuthUser | null>(this.loadStoredUser());
+
+  // isLoggedIn replaces isAuthenticated — used by auth.guard.ts
+  isLoggedIn = computed(() => !!this.currentUser());
+
+  // Keep isAuthenticated as alias so any old code still compiles
+  isAuthenticated = computed(() => !!this.currentUser());
+
+  token = signal<string | null>(localStorage.getItem(this.TOKEN_KEY));
 
   constructor(private http: HttpClient, private router: Router) {
-    // On startup, if we have a token but no avatar yet, fetch the full profile
+    // Hydrate avatar + displayName from profile on startup
     if (this.token() && this.currentUser()) {
       this.refreshProfileInBackground();
     }
   }
 
-  // ─── Login ──────────────────────────────────────────────────────
+  // ─── Login ───────────────────────────────────────────────────────
   login(email: string, password: string) {
-    return this.http.post<AuthResponse>(`${this.apiBase}/auth/login`, { email, password })
-      .pipe(tap(res => {
-        this.storeAuth(res);
-        // Fetch full profile after login to get avatar, displayName etc.
-        this.refreshProfileInBackground();
-      }));
+    return this.http.post<AuthResponse>(
+      `${this.apiBase}/auth/login`, { email, password }
+    ).pipe(tap(res => {
+      this.storeAuth(res);
+      this.refreshProfileInBackground();
+    }));
   }
 
-  // ─── Register ───────────────────────────────────────────────────
-  register(data: RegisterRequest) {
-    return this.http.post<AuthResponse>(`${this.apiBase}/auth/register`, data)
-      .pipe(tap(res => this.storeAuth(res)));
+  // ─── Register ────────────────────────────────────────────────────
+  // Accepts EITHER the old 4-argument style OR the new object style
+  // so register.component.ts works without changes
+  register(
+    emailOrRequest: string | RegisterRequest,
+    password?: string,
+    firstName?: string,
+    lastName?: string
+  ) {
+    let payload: RegisterRequest;
+
+    if (typeof emailOrRequest === 'object') {
+      // New style: register({ email, password, firstName, lastName })
+      payload = emailOrRequest;
+    } else {
+      // Old style: register(firstName, lastName, email, password)
+      // register.component.ts calls: register(firstName, lastName, email, password)
+      // emailOrRequest = firstName, password = lastName, firstName = email, lastName = password
+      payload = {
+        firstName:  emailOrRequest,
+        lastName:   password   || '',
+        email:      firstName  || '',
+        password:   lastName   || '',
+      };
+    }
+
+    return this.http.post<AuthResponse>(
+      `${this.apiBase}/auth/register`, payload
+    ).pipe(tap(res => this.storeAuth(res)));
   }
 
-  // ─── Logout ─────────────────────────────────────────────────────
+  // ─── Logout ──────────────────────────────────────────────────────
   logout() {
     localStorage.removeItem(this.TOKEN_KEY);
     localStorage.removeItem(this.USER_KEY);
@@ -64,8 +103,7 @@ export class AuthService {
     this.router.navigate(['/auth/login']);
   }
 
-  // ─── Called by ProfileComponent after saving profile ────────────
-  // Updates the in-memory + localStorage user so sidebar reflects changes immediately
+  // ─── Update local user (called by ProfileComponent after save) ───
   updateLocalUser(patch: Partial<AuthUser>) {
     const current = this.currentUser();
     if (!current) return;
@@ -78,17 +116,17 @@ export class AuthService {
     return localStorage.getItem(this.TOKEN_KEY);
   }
 
-  // ─── Private helpers ────────────────────────────────────────────
+  // ─── Private ─────────────────────────────────────────────────────
   private storeAuth(res: AuthResponse) {
     localStorage.setItem(this.TOKEN_KEY, res.token);
     const user: AuthUser = {
-      id:    res.user.id,
-      email: res.user.email,
-      role:  res.user.role,
-      displayName: res.user.displayName || res.user.fullName || res.user.email,
-      fullName:    res.user.fullName,
+      id:           res.user.id,
+      email:        res.user.email,
+      role:         res.user.role,
+      displayName:  res.user.displayName || res.user.fullName || res.user.email,
+      fullName:     res.user.fullName,
       avatarBase64: res.user.avatarBase64,
-      planType:    res.user.planType,
+      planType:     res.user.planType,
     };
     localStorage.setItem(this.USER_KEY, JSON.stringify(user));
     this.currentUser.set(user);
@@ -104,7 +142,6 @@ export class AuthService {
     }
   }
 
-  // Fetches /profile in the background and patches currentUser with avatar + displayName
   private refreshProfileInBackground() {
     this.http.get<any>(`${this.apiBase}/profile`).subscribe({
       next: (profile) => {
@@ -115,7 +152,7 @@ export class AuthService {
           planType:     profile.planType,
         });
       },
-      error: () => {} // silently ignore — user is still logged in
+      error: () => {}
     });
   }
 }
