@@ -6,7 +6,8 @@ import { AuthService } from '../services/auth.service';
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
 
-  // Always read via authService.getToken() — uses the correct 'tp_token' key
+  // Read token through AuthService — works regardless of which key name
+  // was used historically (tp_token, token, access_token, etc.)
   const token = authService.getToken();
 
   if (token) {
