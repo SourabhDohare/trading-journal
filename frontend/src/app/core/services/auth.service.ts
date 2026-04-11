@@ -22,15 +22,19 @@ interface RegisterRequest {
   lastName: string;
 }
 
+// Backend may return token under any of these field names
 interface AuthResponse {
-  token: string;
+  token?: string;
+  accessToken?: string;
+  access_token?: string;
+  jwt?: string;
+  jwtToken?: string;
   user: AuthUser;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
 
-  // All historically used token key names — checked in order
   private readonly TOKEN_KEYS = ['tp_token', 'token', 'access_token', 'jwt_token'];
   private readonly TOKEN_KEY  = 'tp_token';
   private readonly USER_KEY   = 'tp_user';
@@ -55,8 +59,6 @@ export class AuthService {
     }));
   }
 
-  // Supports both old 4-arg (firstName, lastName, email, password)
-  // and new object style — so register.component.ts works unchanged
   register(
     emailOrRequest: string | RegisterRequest,
     password?: string,
@@ -67,6 +69,7 @@ export class AuthService {
     if (typeof emailOrRequest === 'object') {
       payload = emailOrRequest;
     } else {
+      // Old 4-arg style: register(firstName, lastName, email, password)
       payload = {
         firstName: emailOrRequest,
         lastName:  password  || '',
@@ -86,13 +89,14 @@ export class AuthService {
     this.router.navigate(['/auth/login']);
   }
 
-  // ── Called by auth.interceptor.ts on every request ──────────────
-  // Checks ALL known key names so existing sessions survive key renames
+  // ── Called by auth.interceptor.ts on EVERY request ─────────────────────
   getToken(): string | null {
     for (const key of this.TOKEN_KEYS) {
       const t = localStorage.getItem(key);
-      if (t) {
-        // Auto-migrate to canonical key
+      // Reject null, empty string, and the literal string "undefined" or "null"
+      // (caused by localStorage.setItem(key, undefined) being called previously)
+      if (t && t !== 'undefined' && t !== 'null' && t.length > 10) {
+        // Migrate to canonical key
         if (key !== this.TOKEN_KEY) {
           localStorage.setItem(this.TOKEN_KEY, t);
           localStorage.removeItem(key);
@@ -111,16 +115,43 @@ export class AuthService {
     localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
   }
 
+  // ── Extract JWT from backend response — tries all common field names ───
+  private extractToken(res: AuthResponse): string | null {
+    // Backend might return token as: token, accessToken, access_token, jwt, jwtToken
+    const raw = res.token
+             || res.accessToken
+             || res.access_token
+             || res.jwt
+             || res.jwtToken
+             || null;
+
+    // Guard: reject undefined/null/short strings
+    if (!raw || raw === 'undefined' || raw === 'null' || raw.length < 10) {
+      console.error('Auth response did not contain a valid JWT. Response keys:', Object.keys(res));
+      return null;
+    }
+    return raw;
+  }
+
   private storeAuth(res: AuthResponse) {
-    localStorage.setItem(this.TOKEN_KEY, res.token);
+    const token = this.extractToken(res);
+
+    if (!token) {
+      // Log the full response so we can see exactly what the backend returned
+      console.error('Login response missing token field. Full response:', JSON.stringify(res));
+      return;
+    }
+
+    localStorage.setItem(this.TOKEN_KEY, token);
+
     const user: AuthUser = {
-      id:           res.user.id,
-      email:        res.user.email,
-      role:         res.user.role,
-      displayName:  res.user.displayName || res.user.fullName || res.user.email,
-      fullName:     res.user.fullName,
-      avatarBase64: res.user.avatarBase64,
-      planType:     res.user.planType,
+      id:           res.user?.id,
+      email:        res.user?.email,
+      role:         res.user?.role,
+      displayName:  res.user?.displayName || res.user?.fullName || res.user?.email,
+      fullName:     res.user?.fullName,
+      avatarBase64: res.user?.avatarBase64,
+      planType:     res.user?.planType,
     };
     localStorage.setItem(this.USER_KEY, JSON.stringify(user));
     this.currentUser.set(user);
