@@ -22,20 +22,16 @@ interface RegisterRequest {
   lastName: string;
 }
 
-// Backend may return token under any of these field names
+// Matches JwtTokenProvider: generateToken() + generateRefreshToken()
 interface AuthResponse {
-  token?: string;
-  accessToken?: string;
-  access_token?: string;
-  jwt?: string;
-  jwtToken?: string;
-  user: AuthUser;
+  token:        string;         // primary JWT — set by backend AuthService
+  refreshToken?: string;        // from generateRefreshToken()
+  user:         AuthUser;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
 
-  private readonly TOKEN_KEYS = ['tp_token', 'token', 'access_token', 'jwt_token'];
   private readonly TOKEN_KEY  = 'tp_token';
   private readonly USER_KEY   = 'tp_user';
   private readonly apiBase    = environment.apiUrl;
@@ -53,58 +49,39 @@ export class AuthService {
   login(email: string, password: string) {
     return this.http.post<AuthResponse>(
       `${this.apiBase}/auth/login`, { email, password }
-    ).pipe(tap(res => {
-      this.storeAuth(res);
-      this.refreshProfileInBackground();
-    }));
+    ).pipe(tap(res => this.storeAuth(res)));
   }
 
+  // Supports old 4-arg style: register(firstName, lastName, email, password)
+  // AND new object style: register({ email, password, firstName, lastName })
   register(
     emailOrRequest: string | RegisterRequest,
     password?: string,
     firstName?: string,
     lastName?: string
   ) {
-    let payload: RegisterRequest;
-    if (typeof emailOrRequest === 'object') {
-      payload = emailOrRequest;
-    } else {
-      // Old 4-arg style: register(firstName, lastName, email, password)
-      payload = {
-        firstName: emailOrRequest,
-        lastName:  password  || '',
-        email:     firstName || '',
-        password:  lastName  || '',
-      };
-    }
+    const payload: RegisterRequest = typeof emailOrRequest === 'object'
+      ? emailOrRequest
+      : { firstName: emailOrRequest, lastName: password || '', email: firstName || '', password: lastName || '' };
+
     return this.http.post<AuthResponse>(
       `${this.apiBase}/auth/register`, payload
     ).pipe(tap(res => this.storeAuth(res)));
   }
 
   logout() {
-    this.TOKEN_KEYS.forEach(k => localStorage.removeItem(k));
+    // Clean up all possible legacy key names
+    ['tp_token', 'token', 'access_token', 'jwt_token'].forEach(k => localStorage.removeItem(k));
     localStorage.removeItem(this.USER_KEY);
     this.currentUser.set(null);
     this.router.navigate(['/auth/login']);
   }
 
-  // ── Called by auth.interceptor.ts on EVERY request ─────────────────────
+  // Called by auth.interceptor.ts on every request
+  // Rejects the literal string "undefined" which can be stored when res.token is undefined
   getToken(): string | null {
-    for (const key of this.TOKEN_KEYS) {
-      const t = localStorage.getItem(key);
-      // Reject null, empty string, and the literal string "undefined" or "null"
-      // (caused by localStorage.setItem(key, undefined) being called previously)
-      if (t && t !== 'undefined' && t !== 'null' && t.length > 10) {
-        // Migrate to canonical key
-        if (key !== this.TOKEN_KEY) {
-          localStorage.setItem(this.TOKEN_KEY, t);
-          localStorage.removeItem(key);
-        }
-        return t;
-      }
-    }
-    return null;
+    const t = localStorage.getItem(this.TOKEN_KEY);
+    return (t && t !== 'undefined' && t !== 'null' && t.startsWith('eyJ')) ? t : null;
   }
 
   updateLocalUser(patch: Partial<AuthUser>) {
@@ -115,33 +92,12 @@ export class AuthService {
     localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
   }
 
-  // ── Extract JWT from backend response — tries all common field names ───
-  private extractToken(res: AuthResponse): string | null {
-    // Backend might return token as: token, accessToken, access_token, jwt, jwtToken
-    const raw = res.token
-             || res.accessToken
-             || res.access_token
-             || res.jwt
-             || res.jwtToken
-             || null;
-
-    // Guard: reject undefined/null/short strings
-    if (!raw || raw === 'undefined' || raw === 'null' || raw.length < 10) {
-      console.error('Auth response did not contain a valid JWT. Response keys:', Object.keys(res));
-      return null;
-    }
-    return raw;
-  }
-
   private storeAuth(res: AuthResponse) {
-    const token = this.extractToken(res);
-
-    if (!token) {
-      // Log the full response so we can see exactly what the backend returned
-      console.error('Login response missing token field. Full response:', JSON.stringify(res));
+    const token = res.token;
+    if (!token || token === 'undefined') {
+      console.error('Backend did not return a valid JWT. Response:', res);
       return;
     }
-
     localStorage.setItem(this.TOKEN_KEY, token);
 
     const user: AuthUser = {
@@ -155,15 +111,16 @@ export class AuthService {
     };
     localStorage.setItem(this.USER_KEY, JSON.stringify(user));
     this.currentUser.set(user);
+
+    // Fetch full profile to get avatar + displayName after login
+    this.refreshProfileInBackground();
   }
 
   private loadStoredUser(): AuthUser | null {
     try {
       const raw = localStorage.getItem(this.USER_KEY);
       return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }
 
   private refreshProfileInBackground() {
