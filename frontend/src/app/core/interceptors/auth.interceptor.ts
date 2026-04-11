@@ -5,12 +5,13 @@ import { AuthService } from '../services/auth.service';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
-
-  // Read token through AuthService — works regardless of which key name
-  // was used historically (tp_token, token, access_token, etc.)
   const token = authService.getToken();
 
-  if (token) {
+  // Skip adding token for auth endpoints (login/register don't need it)
+  const isAuthEndpoint = req.url.includes('/auth/login')
+                      || req.url.includes('/auth/register');
+
+  if (token && !isAuthEndpoint) {
     const authReq = req.clone({
       setHeaders: {
         Authorization: `Bearer ${token}`

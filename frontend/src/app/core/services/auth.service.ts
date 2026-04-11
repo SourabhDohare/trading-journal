@@ -24,31 +24,28 @@ interface RegisterRequest {
 
 interface AuthResponse {
   token: string;
-  refreshToken?: string;
   user: AuthUser;
 }
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
 
-  // Try all historically used key names so existing sessions aren't broken
+  // All historically used token key names — checked in order
   private readonly TOKEN_KEYS = ['tp_token', 'token', 'access_token', 'jwt_token'];
-  private readonly TOKEN_KEY  = 'tp_token';  // canonical key going forward
+  private readonly TOKEN_KEY  = 'tp_token';
   private readonly USER_KEY   = 'tp_user';
   private readonly apiBase    = environment.apiUrl;
 
-  currentUser  = signal<AuthUser | null>(this.loadStoredUser());
-  isLoggedIn   = computed(() => !!this.currentUser() && !!this.getToken());
-  isAuthenticated = computed(() => !!this.currentUser() && !!this.getToken()); // alias
+  currentUser     = signal<AuthUser | null>(this.loadStoredUser());
+  isLoggedIn      = computed(() => !!this.currentUser() && !!this.getToken());
+  isAuthenticated = computed(() => !!this.currentUser() && !!this.getToken());
 
   constructor(private http: HttpClient, private router: Router) {
-    // Hydrate avatar + displayName silently on startup
     if (this.getToken() && this.currentUser()) {
       this.refreshProfileInBackground();
     }
   }
 
-  // ─── Login ────────────────────────────────────────────────────────
   login(email: string, password: string) {
     return this.http.post<AuthResponse>(
       `${this.apiBase}/auth/login`, { email, password }
@@ -58,7 +55,8 @@ export class AuthService {
     }));
   }
 
-  // ─── Register (supports both old 4-arg and new object style) ─────
+  // Supports both old 4-arg (firstName, lastName, email, password)
+  // and new object style — so register.component.ts works unchanged
   register(
     emailOrRequest: string | RegisterRequest,
     password?: string,
@@ -69,12 +67,11 @@ export class AuthService {
     if (typeof emailOrRequest === 'object') {
       payload = emailOrRequest;
     } else {
-      // Old call: register(firstName, lastName, email, password)
       payload = {
         firstName: emailOrRequest,
-        lastName:  password   || '',
-        email:     firstName  || '',
-        password:  lastName   || '',
+        lastName:  password  || '',
+        email:     firstName || '',
+        password:  lastName  || '',
       };
     }
     return this.http.post<AuthResponse>(
@@ -82,24 +79,20 @@ export class AuthService {
     ).pipe(tap(res => this.storeAuth(res)));
   }
 
-  // ─── Logout ───────────────────────────────────────────────────────
   logout() {
-    // Remove all known token keys
     this.TOKEN_KEYS.forEach(k => localStorage.removeItem(k));
     localStorage.removeItem(this.USER_KEY);
     this.currentUser.set(null);
     this.router.navigate(['/auth/login']);
   }
 
-  // ─── getToken — checks ALL historical key names ───────────────────
-  // This is what the auth interceptor calls.
-  // If the user has an older token stored under 'token' or 'access_token',
-  // it will still work without forcing them to log in again.
+  // ── Called by auth.interceptor.ts on every request ──────────────
+  // Checks ALL known key names so existing sessions survive key renames
   getToken(): string | null {
     for (const key of this.TOKEN_KEYS) {
       const t = localStorage.getItem(key);
       if (t) {
-        // Migrate to canonical key if found under old key
+        // Auto-migrate to canonical key
         if (key !== this.TOKEN_KEY) {
           localStorage.setItem(this.TOKEN_KEY, t);
           localStorage.removeItem(key);
@@ -110,7 +103,6 @@ export class AuthService {
     return null;
   }
 
-  // ─── Update local user after profile save ─────────────────────────
   updateLocalUser(patch: Partial<AuthUser>) {
     const current = this.currentUser();
     if (!current) return;
@@ -119,11 +111,8 @@ export class AuthService {
     localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
   }
 
-  // ─── Private ─────────────────────────────────────────────────────
   private storeAuth(res: AuthResponse) {
-    // Store under canonical key
     localStorage.setItem(this.TOKEN_KEY, res.token);
-
     const user: AuthUser = {
       id:           res.user.id,
       email:        res.user.email,
@@ -148,14 +137,12 @@ export class AuthService {
 
   private refreshProfileInBackground() {
     this.http.get<any>(`${this.apiBase}/profile`).subscribe({
-      next: (profile) => {
-        this.updateLocalUser({
-          displayName:  profile.displayName || profile.fullName || profile.email,
-          fullName:     profile.fullName,
-          avatarBase64: profile.avatarBase64 || undefined,
-          planType:     profile.planType,
-        });
-      },
+      next: (p) => this.updateLocalUser({
+        displayName:  p.displayName || p.fullName || p.email,
+        fullName:     p.fullName,
+        avatarBase64: p.avatarBase64 || undefined,
+        planType:     p.planType,
+      }),
       error: () => {}
     });
   }
