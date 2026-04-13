@@ -1040,19 +1040,22 @@ import { environment } from "../../../environments/environment";
 
       .toggle-group {
         display: flex;
-        gap: 8px;
+        gap: 6px;
+        flex-wrap: wrap;
       }
       .toggle-btn {
         flex: 1;
-        padding: 9px 14px;
+        min-width: 0;
+        padding: 9px 8px;
         background: #0a0e1a;
         border: 1px solid #1e2433;
         border-radius: 8px;
         color: #64748b;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.15s;
+        white-space: nowrap;
       }
       .toggle-btn.active {
         background: rgba(59, 130, 246, 0.15);

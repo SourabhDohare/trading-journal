@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
@@ -19,13 +21,16 @@ public class AnalyticsService {
 
     private final TradeRepository tradeRepository;
 
+    // All timestamps stored as UTC — convert to IST before display/bucketing
+    private static final ZoneId UTC = ZoneId.of("UTC");
+    private static final ZoneId IST = ZoneId.of("Asia/Kolkata"); // UTC+5:30
+
     // ══════════════════════════════════════════════════════════
     //  PUBLIC API
     // ══════════════════════════════════════════════════════════
 
     public AnalyticsDTO getAnalytics(String userId, LocalDateTime dateFrom, LocalDateTime dateTo) {
         List<Trade> trades;
-
         if (dateFrom != null && dateTo != null) {
             trades = tradeRepository.findByUserIdAndTradeDateBetweenOrderByTradeDateDesc(
                     userId, dateFrom, dateTo);
@@ -34,8 +39,6 @@ public class AnalyticsService {
                     userId, PageRequest.of(0, 10000)).getContent();
         }
 
-        // SIMPLE RULE: include every trade that is CLOSED (not OPEN, not NO_TRADE)
-        // No pnlAbsolute check — that was causing trades to be silently excluded
         List<Trade> analyticsBase = trades.stream()
                 .filter(t -> t.getOutcomeTag() != null)
                 .filter(t -> t.getOutcomeTag() != Trade.OutcomeTag.OPEN)
@@ -115,20 +118,16 @@ public class AnalyticsService {
 
     private BigDecimal calcProfitFactor(List<Trade> trades) {
         BigDecimal grossProfit = trades.stream()
-                .map(Trade::getPnlAbsolute)
-                .filter(Objects::nonNull)
+                .map(Trade::getPnlAbsolute).filter(Objects::nonNull)
                 .filter(p -> p.compareTo(BigDecimal.ZERO) > 0)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal grossLoss = trades.stream()
-                .map(Trade::getPnlAbsolute)
-                .filter(Objects::nonNull)
+                .map(Trade::getPnlAbsolute).filter(Objects::nonNull)
                 .filter(p -> p.compareTo(BigDecimal.ZERO) < 0)
                 .map(BigDecimal::abs)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (grossLoss.compareTo(BigDecimal.ZERO) == 0) {
-            return grossProfit.compareTo(BigDecimal.ZERO) > 0
-                    ? BigDecimal.valueOf(999.99) : BigDecimal.ZERO;
-        }
+        if (grossLoss.compareTo(BigDecimal.ZERO) == 0)
+            return grossProfit.compareTo(BigDecimal.ZERO) > 0 ? BigDecimal.valueOf(999.99) : BigDecimal.ZERO;
         return grossProfit.divide(grossLoss, 2, RoundingMode.HALF_UP);
     }
 
@@ -140,19 +139,16 @@ public class AnalyticsService {
     private BigDecimal avgPnlByOutcome(List<Trade> trades, Trade.OutcomeTag tag) {
         List<BigDecimal> pnls = trades.stream()
                 .filter(t -> t.getOutcomeTag() == tag)
-                .map(Trade::getPnlAbsolute)
-                .filter(Objects::nonNull)
+                .map(Trade::getPnlAbsolute).filter(Objects::nonNull)
                 .collect(Collectors.toList());
         if (pnls.isEmpty()) return BigDecimal.ZERO;
-        BigDecimal sum = pnls.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
-        return sum.divide(BigDecimal.valueOf(pnls.size()), 2, RoundingMode.HALF_UP);
+        return pnls.stream().reduce(BigDecimal.ZERO, BigDecimal::add)
+                .divide(BigDecimal.valueOf(pnls.size()), 2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calcAvgRR(List<Trade> trades) {
         List<BigDecimal> rrs = trades.stream()
-                .map(Trade::getActualRR)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .map(Trade::getActualRR).filter(Objects::nonNull).collect(Collectors.toList());
         if (rrs.isEmpty()) return BigDecimal.ZERO;
         return rrs.stream().reduce(BigDecimal.ZERO, BigDecimal::add)
                 .divide(BigDecimal.valueOf(rrs.size()), 2, RoundingMode.HALF_UP);
@@ -160,9 +156,7 @@ public class AnalyticsService {
 
     private BigDecimal calcAvgPlannedRR(List<Trade> trades) {
         List<BigDecimal> rrs = trades.stream()
-                .map(Trade::getPlannedRR)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .map(Trade::getPlannedRR).filter(Objects::nonNull).collect(Collectors.toList());
         if (rrs.isEmpty()) return BigDecimal.ZERO;
         return rrs.stream().reduce(BigDecimal.ZERO, BigDecimal::add)
                 .divide(BigDecimal.valueOf(rrs.size()), 2, RoundingMode.HALF_UP);
@@ -183,46 +177,98 @@ public class AnalyticsService {
     }
 
     private BigDecimal maxPnl(List<Trade> trades) {
-        return trades.stream()
-                .map(Trade::getPnlAbsolute)
-                .filter(Objects::nonNull)
-                .max(BigDecimal::compareTo)
-                .orElse(BigDecimal.ZERO);
+        return trades.stream().map(Trade::getPnlAbsolute).filter(Objects::nonNull)
+                .max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
     }
 
     private BigDecimal minPnl(List<Trade> trades) {
-        return trades.stream()
-                .map(Trade::getPnlAbsolute)
-                .filter(Objects::nonNull)
-                .min(BigDecimal::compareTo)
-                .orElse(BigDecimal.ZERO);
+        return trades.stream().map(Trade::getPnlAbsolute).filter(Objects::nonNull)
+                .min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
     }
 
     private int calcMaxConsecutive(List<Trade> trades, Trade.OutcomeTag tag) {
         int max = 0, current = 0;
         for (Trade t : trades) {
-            if (t.getOutcomeTag() == tag) {
-                current++;
-                max = Math.max(max, current);
-            } else {
-                current = 0;
-            }
+            if (t.getOutcomeTag() == tag) { current++; max = Math.max(max, current); }
+            else current = 0;
         }
         return max;
     }
 
     private BigDecimal calcAvgDisciplineScore(List<Trade> trades) {
         List<Integer> scores = trades.stream()
-                .map(Trade::getDisciplineScore)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .map(Trade::getDisciplineScore).filter(Objects::nonNull).collect(Collectors.toList());
         if (scores.isEmpty()) return BigDecimal.ZERO;
         return BigDecimal.valueOf(scores.stream().mapToInt(i -> i).average().orElse(0))
                 .setScale(1, RoundingMode.HALF_UP);
     }
 
     // ══════════════════════════════════════════════════════════
-    //  BREAKDOWN MAPS — properly typed to match AnalyticsDTO
+    //  TIME OF DAY — IST conversion + 24-hr buckets
+    //  FIX: was using raw UTC hour — now converts to IST first.
+    //  Buckets cover full 24 hours for Crypto / Forex / Commodity
+    //  which trade around the clock.
+    // ══════════════════════════════════════════════════════════
+
+    /**
+     * Convert a UTC LocalDateTime to IST hour (0-23).
+     * MongoDB stores all timestamps as UTC — this corrects for that.
+     */
+    private int toISTHour(LocalDateTime utcDateTime) {
+        return utcDateTime.atZone(UTC).withZoneSameInstant(IST).getHour();
+    }
+
+    /**
+     * Bucket key for display — covers full 24 hours.
+     * Indian equity session (9:15–15:30 IST) is broken into finer slots.
+     * Pre/post market + overnight slots for Crypto/Forex/Commodity.
+     */
+    private String getTimeBucket(int istHour) {
+        if (istHour >= 0  && istHour < 6)  return "MIDNIGHT_0_6";      // 12 AM – 6 AM
+        if (istHour >= 6  && istHour < 9)  return "EARLY_6_9";         // 6 AM – 9 AM
+        if (istHour >= 9  && istHour < 11) return "MORNING_9_11";      // 9 AM – 11 AM
+        if (istHour >= 11 && istHour < 13) return "MIDDAY_11_1";       // 11 AM – 1 PM
+        if (istHour >= 13 && istHour < 15) return "AFTERNOON_1_3";     // 1 PM – 3 PM
+        if (istHour >= 15 && istHour < 17) return "CLOSING_3_5";       // 3 PM – 5 PM
+        if (istHour >= 17 && istHour < 20) return "EVENING_5_8";       // 5 PM – 8 PM
+        return "NIGHT_8_12";                                             // 8 PM – 12 AM
+    }
+
+    private Map<String, AnalyticsDTO.TimePerformance> calcTimePerformance(List<Trade> trades) {
+        // Ordered map so frontend always gets consistent order
+        Map<String, List<Trade>> grouped = new LinkedHashMap<>();
+
+        // Pre-populate in display order so empty buckets aren't silently missing
+        List<String> orderedBuckets = List.of(
+            "MIDNIGHT_0_6", "EARLY_6_9", "MORNING_9_11",
+            "MIDDAY_11_1", "AFTERNOON_1_3", "CLOSING_3_5",
+            "EVENING_5_8", "NIGHT_8_12"
+        );
+        orderedBuckets.forEach(b -> grouped.put(b, new ArrayList<>()));
+
+        for (Trade t : trades) {
+            if (t.getTradeDate() == null) continue;
+            int istHour = toISTHour(t.getTradeDate());
+            String bucket = getTimeBucket(istHour);
+            grouped.get(bucket).add(t);
+        }
+
+        Map<String, AnalyticsDTO.TimePerformance> result = new LinkedHashMap<>();
+        grouped.forEach((key, list) -> {
+            if (list.isEmpty()) return; // skip empty buckets — frontend doesn't need them
+            long wins = countByOutcome(list, Trade.OutcomeTag.PROFIT);
+            BigDecimal wr = BigDecimal.valueOf(wins * 100.0 / list.size())
+                    .setScale(1, RoundingMode.HALF_UP);
+            BigDecimal total = sumPnl(list);
+            BigDecimal avg = total.divide(BigDecimal.valueOf(list.size()), 2, RoundingMode.HALF_UP);
+            result.put(key, AnalyticsDTO.TimePerformance.builder()
+                    .count(list.size()).winRate(wr).avgPnl(avg).build());
+        });
+        return result;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    //  BREAKDOWN MAPS
     // ══════════════════════════════════════════════════════════
 
     private Map<String, AnalyticsDTO.SetupPerformance> calcSetupPerformance(List<Trade> trades) {
@@ -283,76 +329,42 @@ public class AnalyticsService {
         return result;
     }
 
-    private Map<String, AnalyticsDTO.TimePerformance> calcTimePerformance(List<Trade> trades) {
-        Map<String, List<Trade>> grouped = new LinkedHashMap<>();
-        for (Trade t : trades) {
-            if (t.getTradeDate() == null) continue;
-            int hour = t.getTradeDate().getHour();
-            String period;
-            if      (hour >= 9  && hour < 11) period = "MORNING_9_11";
-            else if (hour >= 11 && hour < 13) period = "MID_11_1";
-            else if (hour >= 13 && hour < 15) period = "AFTERNOON_1_3";
-            else if (hour >= 15 && hour < 16) period = "CLOSING_3_330";
-            else continue;
-            grouped.computeIfAbsent(period, k -> new ArrayList<>()).add(t);
-        }
-        Map<String, AnalyticsDTO.TimePerformance> result = new LinkedHashMap<>();
-        grouped.forEach((key, list) -> {
-            long wins = countByOutcome(list, Trade.OutcomeTag.PROFIT);
-            BigDecimal wr = list.isEmpty() ? BigDecimal.ZERO
-                    : BigDecimal.valueOf(wins * 100.0 / list.size()).setScale(1, RoundingMode.HALF_UP);
-            BigDecimal total = sumPnl(list);
-            BigDecimal avg = list.isEmpty() ? BigDecimal.ZERO
-                    : total.divide(BigDecimal.valueOf(list.size()), 2, RoundingMode.HALF_UP);
-            result.put(key, AnalyticsDTO.TimePerformance.builder()
-                    .count(list.size()).winRate(wr).avgPnl(avg).build());
-        });
-        return result;
-    }
-
     private Map<String, BigDecimal> calcMonthlyPnl(List<Trade> trades) {
         Map<String, BigDecimal> monthly = new TreeMap<>();
         for (Trade t : trades) {
             if (t.getTradeDate() == null || t.getPnlAbsolute() == null) continue;
-            String month = t.getTradeDate().getYear() + "-"
-                    + String.format("%02d", t.getTradeDate().getMonthValue());
+            // Convert to IST for correct month assignment
+            ZonedDateTime ist = t.getTradeDate().atZone(UTC).withZoneSameInstant(IST);
+            String month = ist.getYear() + "-" + String.format("%02d", ist.getMonthValue());
             monthly.merge(month, t.getPnlAbsolute(), BigDecimal::add);
         }
         return monthly;
     }
 
     // ══════════════════════════════════════════════════════════
-    //  TIME FRAME ANALYTICS (NEW)
+    //  TIME FRAME ANALYTICS
     // ══════════════════════════════════════════════════════════
 
     private Map<String, Integer> calcTimeFrameUsage(List<Trade> trades) {
         Map<String, Integer> usage = new LinkedHashMap<>();
         for (Trade t : trades) {
             if (t.getTimeFrames() == null) continue;
-            for (String tf : t.getTimeFrames()) {
-                usage.merge(tf, 1, Integer::sum);
-            }
+            for (String tf : t.getTimeFrames()) usage.merge(tf, 1, Integer::sum);
         }
-        // Sort by count descending
         return usage.entrySet().stream()
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                .collect(Collectors.toMap(
-                        Map.Entry::getKey,
-                        Map.Entry::getValue,
-                        (e1, e2) -> e1,
-                        LinkedHashMap::new));
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                        (e1, e2) -> e1, LinkedHashMap::new));
     }
 
     private List<AnalyticsDTO.TimeFramePerformance> calcTimeFramePerformance(List<Trade> trades) {
         Map<String, List<Trade>> byTf = new LinkedHashMap<>();
         for (Trade t : trades) {
             if (t.getTimeFrames() == null) continue;
-            for (String tf : t.getTimeFrames()) {
+            for (String tf : t.getTimeFrames())
                 byTf.computeIfAbsent(tf, k -> new ArrayList<>()).add(t);
-            }
         }
         return byTf.entrySet().stream().map(e -> {
-            String tf = e.getKey();
             List<Trade> list = e.getValue();
             long wins = countByOutcome(list, Trade.OutcomeTag.PROFIT);
             BigDecimal wr = list.isEmpty() ? BigDecimal.ZERO
@@ -361,7 +373,7 @@ public class AnalyticsService {
             BigDecimal avg = list.isEmpty() ? BigDecimal.ZERO
                     : total.divide(BigDecimal.valueOf(list.size()), 2, RoundingMode.HALF_UP);
             return AnalyticsDTO.TimeFramePerformance.builder()
-                    .timeFrame(tf).trades(list.size()).winRate(wr).avgPnl(avg).totalPnl(total)
+                    .timeFrame(e.getKey()).trades(list.size()).winRate(wr).avgPnl(avg).totalPnl(total)
                     .build();
         })
         .sorted(Comparator.comparingInt(AnalyticsDTO.TimeFramePerformance::getTrades).reversed())
@@ -432,15 +444,12 @@ public class AnalyticsService {
 
     private List<String> detectDisciplineBreaks(List<Trade> trades) {
         List<String> breaks = new ArrayList<>();
-        trades.stream()
-                .filter(t -> !t.isSlRespected())
+        trades.stream().filter(t -> !t.isSlRespected())
                 .forEach(t -> breaks.add("SL moved/ignored on " + t.getInstrument()
                         + " (" + (t.getTradeDate() != null ? t.getTradeDate().toLocalDate() : "?") + ")"));
-        trades.stream()
-                .filter(t -> t.getEmotionalState() == Trade.EmotionalState.REVENGE)
+        trades.stream().filter(t -> t.getEmotionalState() == Trade.EmotionalState.REVENGE)
                 .forEach(t -> breaks.add("Revenge trade: " + t.getInstrument()));
-        trades.stream()
-                .filter(t -> t.getTags() != null && t.getTags().contains("#DisciplineBreak"))
+        trades.stream().filter(t -> t.getTags() != null && t.getTags().contains("#DisciplineBreak"))
                 .forEach(t -> breaks.add("Self-tagged discipline break: " + t.getInstrument()));
         return breaks;
     }
