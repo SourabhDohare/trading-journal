@@ -9,9 +9,11 @@ import {
   Validators,
 } from "@angular/forms";
 import { Router, RouterLink } from "@angular/router";
+import { HttpClient } from "@angular/common/http";
 import { TradeService } from "../../core/services/trade.service";
 import { TIME_FRAMES } from "../../shared/models/trade.model";
 import { debounceTime, distinctUntilChanged } from "rxjs/operators";
+import { environment } from "../../../environments/environment";
 
 @Component({
   selector: "app-trade-form",
@@ -23,13 +25,26 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         <div>
           <a routerLink="/trades" class="back-link">← Back to Journal</a>
           <h1 class="page-title">Log New Trade</h1>
-          <p class="page-subtitle warning-text" *ngIf="strictMode()">
-            ⚡ Strict Mode Active — Incomplete entries will be rejected
-          </p>
         </div>
       </div>
 
       <form [formGroup]="form" (ngSubmit)="submit()" class="trade-form">
+        <!-- ── STRICT MODE BANNER — shown when strictMode is ON ───────────── -->
+        <div class="strict-banner" *ngIf="strictMode()">
+          <div class="strict-banner-left">
+            <span class="strict-icon">🔒</span>
+            <div>
+              <span class="strict-title">Strict Mode Active</span>
+              <span class="strict-sub"
+                >All thinking-layer fields are required with minimum detail. No
+                shortcuts.</span
+              >
+            </div>
+          </div>
+          <span class="strict-badge">STRICT</span>
+        </div>
+        <!-- ─────────────────────────────────────────────────────────────────── -->
+
         <!-- Section 1: Core Trade Data -->
         <div class="form-section">
           <h2 class="section-title">Core Trade Data</h2>
@@ -103,7 +118,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
                 step="0.05"
               />
             </div>
-            <!-- Stop Loss -->
             <div class="form-group">
               <label
                 >Stop Loss * <span class="hint">Non-negotiable</span></label
@@ -121,12 +135,10 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
               >
                 SL is mandatory — no SL, no trade
               </span>
-              <span class="hint-warn" *ngIf="slDirectionWarning()">
-                ⚠ {{ slDirectionWarning() }}
-              </span>
+              <span class="hint-warn" *ngIf="slDirectionWarning()"
+                >⚠ {{ slDirectionWarning() }}</span
+              >
             </div>
-
-            <!-- Target -->
             <div class="form-group">
               <label>Target *</label>
               <input
@@ -206,7 +218,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
             </div>
           </div>
 
-          <!-- RR Preview -->
           <div class="rr-preview" *ngIf="computedRR()">
             <span class="rr-label">Planned R:R</span>
             <span
@@ -227,8 +238,17 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
           <h2 class="section-title">Setup, Market Context & Time Frames</h2>
           <div class="form-grid">
             <div class="form-group">
-              <label>Setup Type *</label>
-              <select formControlName="setupType" class="form-select">
+              <label>
+                Setup Type *
+                <span class="req-strict" *ngIf="strictMode()"
+                  >* required in Strict Mode</span
+                >
+              </label>
+              <select
+                formControlName="setupType"
+                class="form-select"
+                [class.strict-required]="strictMode() && !f['setupType'].value"
+              >
                 <option value="">Select setup</option>
                 <option value="BREAKOUT">Breakout</option>
                 <option value="REVERSAL">Reversal</option>
@@ -257,7 +277,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
             </div>
           </div>
 
-          <!-- Time Frames — multi-select tags -->
           <div class="form-group full-width tf-section">
             <label>
               Time Frame(s) Used
@@ -288,76 +307,123 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
           </div>
         </div>
 
-        <!-- Section 3: MANDATORY THINKING LAYER -->
-        <div class="form-section thinking-section">
+        <!-- Section 3: MANDATORY THINKING LAYER — with thinking-layer-section class for scroll -->
+        <div class="form-section thinking-section thinking-layer-section">
           <h2 class="section-title">
             Mandatory Thinking Layer
             <span class="mandatory-badge"
               >REQUIRED — Vague answers not accepted</span
             >
+            <span class="strict-thinking-badge" *ngIf="strictMode()"
+              >🔒 Min 20 chars each</span
+            >
           </h2>
 
+          <!-- Why Took Trade -->
           <div class="form-group full-width">
-            <label
-              >Why did you take this trade? *
+            <label>
+              Why did you take this trade? *
+              <span class="req-strict" *ngIf="strictMode()"
+                >* min 20 chars</span
+              >
               <span class="hint"
                 >Be specific. "It looked good" is not acceptable.</span
-              ></label
-            >
+              >
+            </label>
             <textarea
               formControlName="whyTookTrade"
               rows="3"
               class="form-textarea"
+              [class.strict-required]="
+                strictMode() && (f['whyTookTrade'].value?.length || 0) < 20
+              "
               placeholder="e.g. Price broke above 20-day resistance at 18450 with 2.5x average volume..."
-            ></textarea>
+            >
+            </textarea>
             <div
               class="char-count"
-              [class.warn]="(f['whyTookTrade'].value?.length || 0) < 30"
+              [class.warn]="(f['whyTookTrade'].value?.length || 0) < 20"
+              [class.ok]="(f['whyTookTrade'].value?.length || 0) >= 20"
             >
-              {{ f["whyTookTrade"].value?.length || 0 }} chars (min 20)
+              {{ f["whyTookTrade"].value?.length || 0 }} chars
+              <span *ngIf="strictMode()"> · min 20</span>
             </div>
           </div>
 
+          <!-- Edge / Setup Logic -->
           <div class="form-group full-width">
-            <label
-              >Your Edge / Setup Logic *
-              <span class="hint">What gives you an advantage?</span></label
-            >
+            <label>
+              Your Edge / Setup Logic *
+              <span class="req-strict" *ngIf="strictMode()"
+                >* min 20 chars</span
+              >
+              <span class="hint">What gives you an advantage?</span>
+            </label>
             <textarea
               formControlName="edgeOrSetupLogic"
               rows="3"
               class="form-textarea"
+              [class.strict-required]="
+                strictMode() && (f['edgeOrSetupLogic'].value?.length || 0) < 20
+              "
               placeholder="e.g. Historical backtest shows breakouts above 52-week high with volume > 1.5x have 68% win rate..."
-            ></textarea>
+            >
+            </textarea>
+            <div
+              class="char-count"
+              [class.warn]="(f['edgeOrSetupLogic'].value?.length || 0) < 20"
+              [class.ok]="(f['edgeOrSetupLogic'].value?.length || 0) >= 20"
+            >
+              {{ f["edgeOrSetupLogic"].value?.length || 0 }} chars
+              <span *ngIf="strictMode()"> · min 20</span>
+            </div>
           </div>
 
+          <!-- Confirmation Used -->
           <div class="form-group full-width">
-            <label>Confirmation Used *</label>
+            <label>
+              Confirmation Used *
+              <span class="req-strict" *ngIf="strictMode()">* required</span>
+            </label>
             <textarea
               formControlName="confirmationUsed"
               rows="2"
               class="form-textarea"
+              [class.strict-required]="
+                strictMode() && !f['confirmationUsed'].value?.trim()
+              "
               placeholder="e.g. 15min candle close above resistance, volume confirmation, sector momentum aligned..."
-            ></textarea>
+            >
+            </textarea>
           </div>
 
+          <!-- Invalidation -->
           <div class="form-group full-width">
-            <label>Trade Invalidation — What would prove you wrong? *</label>
+            <label>
+              Trade Invalidation — What would prove you wrong? *
+              <span class="req-strict" *ngIf="strictMode()">* required</span>
+            </label>
             <textarea
               formControlName="invalidationReason"
               rows="2"
               class="form-textarea"
+              [class.strict-required]="
+                strictMode() && !f['invalidationReason'].value?.trim()
+              "
               placeholder="e.g. If price closes below 18350 on a 15-min candle, the thesis is invalid..."
-            ></textarea>
+            >
+            </textarea>
           </div>
 
+          <!-- Emotional State -->
           <div class="form-group">
-            <label
-              >Emotional State Before Entry *
+            <label>
+              Emotional State Before Entry *
+              <span class="req-strict" *ngIf="strictMode()">* required</span>
               <span class="hint"
                 >Be honest — this data is for your benefit</span
-              ></label
-            >
+              >
+            </label>
             <div class="emotion-grid">
               <button
                 type="button"
@@ -389,7 +455,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         <div class="form-section">
           <h2 class="section-title">Outcome & Tags</h2>
           <div class="form-grid">
-            <!-- Outcome -->
             <div class="form-group">
               <label>
                 Outcome
@@ -430,7 +495,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
                 price
               </span>
             </div>
-
             <div class="form-group">
               <label
                 >P&L (₹)
@@ -517,7 +581,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
             Attach up to 5 chart images — entry, exit, multi-timeframe analysis
           </p>
 
-          <!-- Upload area -->
           <div
             class="upload-area"
             (click)="triggerFileInput()"
@@ -542,7 +605,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
             </div>
           </div>
 
-          <!-- Image previews -->
           <div class="image-grid" *ngIf="chartImages().length">
             <div
               *ngFor="let img of chartImages(); let i = index"
@@ -562,7 +624,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
               </div>
             </div>
           </div>
-
           <div class="img-error" *ngIf="imageError()">{{ imageError() }}</div>
         </div>
 
@@ -589,6 +650,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
       .invalid-field {
         border-color: #ef4444 !important;
       }
+
       .page {
         padding: 32px;
         max-width: 900px;
@@ -609,18 +671,79 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         color: #e2e8f0;
         margin: 0 0 4px;
       }
-      .page-subtitle {
-        margin: 0;
-        font-size: 13px;
-      }
-      .warning-text {
-        color: #f59e0b;
-      }
       .trade-form {
         display: flex;
         flex-direction: column;
         gap: 24px;
         margin-top: 24px;
+      }
+
+      /* ── Strict Mode Banner ─────────────────────────────── */
+      .strict-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: rgba(239, 68, 68, 0.06);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        border-left: 3px solid #ef4444;
+        border-radius: 10px;
+        padding: 14px 18px;
+      }
+      .strict-banner-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .strict-icon {
+        font-size: 20px;
+      }
+      .strict-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #f87171;
+        display: block;
+      }
+      .strict-sub {
+        font-size: 12px;
+        color: #64748b;
+      }
+      .strict-badge {
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        padding: 3px 10px;
+        border-radius: 4px;
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+      /* Required indicator in strict mode */
+      .req-strict {
+        font-size: 10px;
+        color: #ef4444;
+        font-weight: 700;
+        text-transform: none;
+        letter-spacing: 0;
+        margin-left: 4px;
+      }
+      /* Red border on empty required fields in strict mode */
+      .strict-required {
+        border-color: rgba(239, 68, 68, 0.5) !important;
+      }
+      .strict-required:focus {
+        border-color: #ef4444 !important;
+      }
+      /* Badge inside section title */
+      .strict-thinking-badge {
+        font-size: 10px;
+        font-weight: 700;
+        color: #f87171;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+        padding: 2px 8px;
+        border-radius: 4px;
+        letter-spacing: 0;
+        text-transform: none;
       }
 
       .form-section {
@@ -637,7 +760,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         color: #475569;
         margin: -12px 0 16px;
       }
-
       .section-title {
         font-size: 14px;
         font-weight: 700;
@@ -648,6 +770,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         display: flex;
         align-items: center;
         gap: 12px;
+        flex-wrap: wrap;
       }
       .mandatory-badge {
         font-size: 10px;
@@ -680,7 +803,7 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         gap: 6px;
       }
       .form-group.full-width {
-        grid-column: 1 / -1;
+        grid-column: 1/-1;
       }
 
       label {
@@ -743,7 +866,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         color: #475569;
       }
 
-      /* ─── Outcome locked display ───────────────────────── */
       .outcome-display {
         display: flex;
         align-items: center;
@@ -801,7 +923,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         color: #3b82f6;
       }
 
-      /* ─── Time Frames ──────────────────────────────────── */
       .tf-section {
         margin-top: 16px;
       }
@@ -826,25 +947,21 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         border-color: #3b82f6;
         color: #3b82f6;
       }
-      /* Short timeframes — blue family */
       .tf-btn.tf-short.active {
         background: rgba(59, 130, 246, 0.12);
         border-color: #3b82f6;
         color: #3b82f6;
       }
-      /* Medium timeframes — purple family */
       .tf-btn.tf-medium.active {
         background: rgba(139, 92, 246, 0.12);
         border-color: #8b5cf6;
         color: #a78bfa;
       }
-      /* Long timeframes — teal family */
       .tf-btn.tf-long.active {
         background: rgba(20, 184, 166, 0.12);
         border-color: #14b8a6;
         color: #2dd4bf;
       }
-
       .tf-selected {
         margin-top: 10px;
         font-size: 12px;
@@ -864,7 +981,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-weight: 600;
       }
 
-      /* ─── RR Preview ───────────────────────────────────── */
       .rr-preview {
         display: flex;
         align-items: center;
@@ -896,7 +1012,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         color: #f59e0b;
       }
 
-      /* ─── Toggle buttons ───────────────────────────────── */
       .toggle-group {
         display: flex;
         gap: 8px;
@@ -935,7 +1050,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         border-color: #ef4444;
       }
 
-      /* ─── Emotion buttons ──────────────────────────────── */
       .emotion-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -989,7 +1103,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         border-left-color: #ef4444;
       }
 
-      /* ─── Tags ─────────────────────────────────────────── */
       .tags-grid {
         display: flex;
         flex-wrap: wrap;
@@ -1011,7 +1124,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         color: #a78bfa;
       }
 
-      /* ─── Chart Image Upload ───────────────────────────── */
       .upload-area {
         border: 2px dashed #1e2433;
         border-radius: 12px;
@@ -1043,7 +1155,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         font-size: 12px;
         color: #475569;
       }
-
       .image-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -1104,7 +1215,6 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         margin-top: 8px;
       }
 
-      /* ─── SL Check ─────────────────────────────────────── */
       .sl-check {
         flex-direction: row;
         align-items: flex-start;
@@ -1132,14 +1242,20 @@ import { debounceTime, distinctUntilChanged } from "rxjs/operators";
         margin-top: 6px;
       }
 
+      /* char count — green when met, red when below threshold */
       .char-count {
         font-size: 11px;
         color: #475569;
         text-align: right;
+        margin-top: 2px;
       }
       .char-count.warn {
         color: #ef4444;
       }
+      .char-count.ok {
+        color: #22c55e;
+      }
+
       .error {
         font-size: 11px;
         color: #ef4444;
@@ -1242,9 +1358,16 @@ export class TradeFormComponent implements OnInit {
     private fb: FormBuilder,
     private tradeService: TradeService,
     private router: Router,
+    private http: HttpClient, // ← ADDED
   ) {}
 
   ngOnInit() {
+    // ── Load strictMode from user profile ──────────────────────────────────
+    this.http.get<any>(`${environment.apiUrl}/profile`).subscribe({
+      next: (p) => this.strictMode.set(p.strictMode === true),
+      error: () => {},
+    });
+
     this.form = this.fb.group({
       instrument: ["", Validators.required],
       instrumentType: ["", Validators.required],
@@ -1273,17 +1396,14 @@ export class TradeFormComponent implements OnInit {
       slRespected: [true],
     });
 
-    // Re-validate target whenever entry or direction changes
     this.form
       .get("entryPrice")
       ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
       .subscribe(() => {
         this.form.get("target")?.updateValueAndValidity();
-        // Re-trigger exit price calc if exit already set
         const exit = this.form.get("exitPrice")?.value;
-        if (exit && +exit > 0) {
+        if (exit && +exit > 0)
           this.form.get("exitPrice")?.setValue(exit, { emitEvent: true });
-        }
       });
 
     this.form
@@ -1292,12 +1412,10 @@ export class TradeFormComponent implements OnInit {
       .subscribe(() => {
         this.form.get("target")?.updateValueAndValidity();
         const exit = this.form.get("exitPrice")?.value;
-        if (exit && +exit > 0) {
+        if (exit && +exit > 0)
           this.form.get("exitPrice")?.setValue(exit, { emitEvent: true });
-        }
       });
 
-    // Auto-set and lock outcome from exit price
     this.form
       .get("exitPrice")
       ?.valueChanges.pipe(debounceTime(300), distinctUntilChanged())
@@ -1359,7 +1477,6 @@ export class TradeFormComponent implements OnInit {
     );
   }
 
-  // ─── Time Frame helpers ────────────────────────────────
   toggleTimeFrame(tf: string) {
     this.selectedTimeFrames.update((t) =>
       t.includes(tf) ? t.filter((x) => x !== tf) : [...t, tf],
@@ -1376,12 +1493,8 @@ export class TradeFormComponent implements OnInit {
     return ["4hr", "6hr", "12hr", "1day", "1week"].includes(tf);
   }
 
-  // ─── Image Upload ──────────────────────────────────────
   triggerFileInput() {
-    const input = document.querySelector(
-      "input[type=file]",
-    ) as HTMLInputElement;
-    input?.click();
+    (document.querySelector("input[type=file]") as HTMLInputElement)?.click();
   }
 
   onFilesSelected(event: Event) {
@@ -1393,43 +1506,36 @@ export class TradeFormComponent implements OnInit {
     event.preventDefault();
     this.isDragOver.set(true);
   }
-
   onDrop(event: DragEvent) {
     event.preventDefault();
     this.isDragOver.set(false);
-    const files = Array.from(event.dataTransfer?.files || []);
-    this.processFiles(files);
+    this.processFiles(Array.from(event.dataTransfer?.files || []));
   }
 
   private processFiles(files: File[]) {
     this.imageError.set("");
     const remaining = 5 - this.chartImages().length;
     const toProcess = files.slice(0, remaining);
-
-    if (files.length > remaining) {
+    if (files.length > remaining)
       this.imageError.set(
         `Only ${remaining} slot(s) remaining. Extra images were skipped.`,
       );
-    }
-
     toProcess.forEach((file) => {
       if (!file.type.startsWith("image/")) {
         this.imageError.set("Only image files are allowed.");
         return;
       }
       if (file.size > 500 * 1024) {
-        this.imageError.set(
-          `"${file.name}" exceeds 500KB. Please compress it before uploading.`,
-        );
+        this.imageError.set(`"${file.name}" exceeds 500KB.`);
         return;
       }
-
       const reader = new FileReader();
       reader.onload = (e) => {
-        const base64 = e.target?.result as string;
-        if (this.chartImages().length < 5) {
-          this.chartImages.update((imgs) => [...imgs, base64]);
-        }
+        if (this.chartImages().length < 5)
+          this.chartImages.update((imgs) => [
+            ...imgs,
+            e.target?.result as string,
+          ]);
       };
       reader.readAsDataURL(file);
     });
@@ -1439,41 +1545,32 @@ export class TradeFormComponent implements OnInit {
     this.chartImages.update((imgs) => imgs.filter((_, i) => i !== index));
   }
 
-  // ─── Direction-aware validation helpers ───────────────────────────────────
-
-  // Returns a warning string if SL is on the "wrong" side (non-blocking)
   slDirectionWarning(): string | null {
-  const entry = +this.f['entryPrice'].value || 0;
-  const sl    = +this.f['stopLoss'].value   || 0;
-  const dir   = this.f['direction'].value;
-  if (!entry || !sl) return null;
-
-  if (dir === 'BUY' && sl >= entry) {
-    return `SL ₹${sl} is at or below your entry ₹${entry}. For BUY trades, SL must be below entry to cap your downside.`;
+    const entry = +this.f["entryPrice"].value || 0;
+    const sl = +this.f["stopLoss"].value || 0;
+    const dir = this.f["direction"].value;
+    if (!entry || !sl) return null;
+    if (dir === "BUY" && sl >= entry)
+      return `SL ₹${sl} is at or above entry ₹${entry}. For BUY trades SL must be below entry.`;
+    if (dir === "SELL" && sl <= entry)
+      return `SL ₹${sl} is at or below entry ₹${entry}. For SELL trades SL must be above entry.`;
+    return null;
   }
-  if (dir === 'SELL' && sl <= entry) {
-    return `SL ₹${sl} is at or above your entry ₹${entry}. For SELL trades, SL must be above entry — if price rises to SL you exit the short.`;
-  }
-  return null;
-}
 
-  // Returns error text if target is on wrong side — this IS blocking on submit
   targetError(): string {
     const dir = this.f["direction"].value;
-    if (dir === "BUY")
-      return "For BUY trades, target must be above entry price.";
-    if (dir === "SELL")
-      return "For SELL trades, target must be below entry price.";
-    return "Invalid target.";
+    return dir === "BUY"
+      ? "For BUY trades, target must be above entry price."
+      : dir === "SELL"
+        ? "For SELL trades, target must be below entry price."
+        : "Invalid target.";
   }
 
-  // Validates target on submit — call this inside submit() before API call
   private validateTargetDirection(): boolean {
     const entry = +this.f["entryPrice"].value || 0;
     const target = +this.f["target"].value || 0;
     const dir = this.f["direction"].value;
-    if (!entry || !target) return true; // let required validators catch it
-
+    if (!entry || !target) return true;
     if (dir === "BUY" && target <= entry) {
       this.f["target"].setErrors({ targetInvalid: true });
       return false;
@@ -1482,7 +1579,6 @@ export class TradeFormComponent implements OnInit {
       this.f["target"].setErrors({ targetInvalid: true });
       return false;
     }
-    // Clear the custom error if it was previously set
     const existing = this.f["target"].errors;
     if (existing?.["targetInvalid"]) {
       const { targetInvalid, ...rest } = existing;
@@ -1490,17 +1586,44 @@ export class TradeFormComponent implements OnInit {
     }
     return true;
   }
-  // ─── Submit ────────────────────────────────────────────
+
   submit() {
     this.submitted = true;
     this.apiError.set("");
 
-    // Run direction-aware target validation first
-    const targetOk = this.validateTargetDirection();
-    if (!targetOk) {
+    if (!this.validateTargetDirection()) {
       this.apiError.set(this.targetError());
       return;
     }
+
+    // ── STRICT MODE FRONTEND VALIDATION ─────────────────────────────────────
+    // Runs before form.invalid so errors are specific field-by-field messages
+    if (this.strictMode()) {
+      const errors: string[] = [];
+      const why = this.f["whyTookTrade"].value?.trim() || "";
+      const edge = this.f["edgeOrSetupLogic"].value?.trim() || "";
+      const conf = this.f["confirmationUsed"].value?.trim() || "";
+      const inv = this.f["invalidationReason"].value?.trim() || "";
+
+      if (why.length < 20)
+        errors.push(`Why Took Trade (${why.length}/20 chars)`);
+      if (edge.length < 20)
+        errors.push(`Edge / Setup Logic (${edge.length}/20 chars)`);
+      if (conf.length < 5) errors.push("Confirmation Used — required");
+      if (inv.length < 5) errors.push("Invalidation Condition — required");
+      if (!this.f["emotionalState"].value)
+        errors.push("Emotional State — required");
+      if (!this.f["setupType"].value) errors.push("Setup Type — required");
+
+      if (errors.length > 0) {
+        this.apiError.set("🔒 Strict Mode: " + errors.join(" · "));
+        document
+          .querySelector(".thinking-layer-section")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
