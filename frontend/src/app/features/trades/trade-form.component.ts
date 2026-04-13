@@ -1044,9 +1044,9 @@ import { environment } from "../../../environments/environment";
         flex-wrap: wrap;
       }
       .toggle-btn {
-        flex: 1;
-        min-width: 0;
-        padding: 9px 8px;
+        flex: 1 1 auto;
+        min-width: fit-content;
+        padding: 9px 10px;
         background: #0a0e1a;
         border: 1px solid #1e2433;
         border-radius: 8px;
@@ -1056,6 +1056,7 @@ import { environment } from "../../../environments/environment";
         cursor: pointer;
         transition: all 0.15s;
         white-space: nowrap;
+        overflow: visible;
       }
       .toggle-btn.active {
         background: rgba(59, 130, 246, 0.15);
