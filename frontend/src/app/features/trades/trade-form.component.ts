@@ -209,11 +209,19 @@ import { environment } from "../../../environments/environment";
               />
             </div>
             <div class="form-group">
-              <label>Exchange</label>
+              <label>
+                Exchange
+                <span class="req-strict" *ngIf="strictMode()"
+                  >* required in Strict Mode</span
+                >
+              </label>
               <input
                 formControlName="exchange"
                 placeholder="NSE / BSE / MCX..."
                 class="form-input"
+                [class.strict-required]="
+                  strictMode() && !f['exchange'].value?.trim()
+                "
               />
             </div>
           </div>
@@ -572,10 +580,25 @@ import { environment } from "../../../environments/environment";
         </div>
 
         <!-- Section 5: Chart Images -->
-        <div class="form-section">
+        <div
+          class="form-section"
+          [class.strict-section-required]="
+            strictMode() && chartImages().length === 0
+          "
+        >
           <h2 class="section-title">
             Chart Screenshots
-            <span class="img-count-badge">{{ chartImages().length }}/5</span>
+            <span
+              class="img-count-badge"
+              [class.img-badge-warn]="
+                strictMode() && chartImages().length === 0
+              "
+            >
+              {{ chartImages().length }}/5
+            </span>
+            <span class="req-strict" *ngIf="strictMode()"
+              >* min 1 chart required in Strict Mode</span
+            >
           </h2>
           <p class="section-sub">
             Attach up to 5 chart images — entry, exit, multi-timeframe analysis
@@ -587,6 +610,9 @@ import { environment } from "../../../environments/environment";
             (dragover)="onDragOver($event)"
             (drop)="onDrop($event)"
             [class.drag-over]="isDragOver()"
+            [class.upload-strict-required]="
+              strictMode() && chartImages().length === 0
+            "
             *ngIf="chartImages().length < 5"
           >
             <input
@@ -1139,6 +1165,20 @@ import { environment } from "../../../environments/environment";
         border-color: #3b82f6;
         background: rgba(59, 130, 246, 0.05);
       }
+      .upload-strict-required {
+        border-color: rgba(239, 68, 68, 0.5) !important;
+        background: rgba(239, 68, 68, 0.03) !important;
+      }
+      .upload-strict-required:hover {
+        border-color: #ef4444 !important;
+      }
+      .strict-section-required {
+        border-color: rgba(239, 68, 68, 0.3) !important;
+      }
+      .img-badge-warn {
+        background: rgba(239, 68, 68, 0.15) !important;
+        color: #ef4444 !important;
+      }
       .upload-icon {
         font-size: 28px;
         color: #3b82f6;
@@ -1614,6 +1654,10 @@ export class TradeFormComponent implements OnInit {
       if (!this.f["emotionalState"].value)
         errors.push("Emotional State — required");
       if (!this.f["setupType"].value) errors.push("Setup Type — required");
+      if (!this.f["exchange"].value?.trim())
+        errors.push("Exchange — required (NSE / BSE / MCX...)");
+      if (this.chartImages().length === 0)
+        errors.push("Chart Screenshot — min 1 image required");
 
       if (errors.length > 0) {
         this.apiError.set("🔒 Strict Mode: " + errors.join(" · "));
