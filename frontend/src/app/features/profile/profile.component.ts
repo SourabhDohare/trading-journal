@@ -155,7 +155,7 @@ interface UserProfile {
               <div class="toggle-info">
                 <span class="toggle-label">Weekly Report Email</span>
                 <span class="toggle-desc"
-                  >Performance summary every Monday</span
+                  >Performance summary every Saturday</span
                 >
               </div>
               <label class="switch">
