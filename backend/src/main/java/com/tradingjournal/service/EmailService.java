@@ -24,9 +24,9 @@ import java.util.Map;
  * 2. Verify your domain OR use onboarding@resend.dev for testing
  * 3. Create API key at resend.com/api-keys
  * 4. Add to Render env vars:
- *    RESEND_API_KEY = re_xxxxxxxxxxxx
- *    MAIL_FROM      = TradePulse <noreply@yourdomain.com>
- *                     (or for testing: onboarding@resend.dev)
+ * RESEND_API_KEY = re_xxxxxxxxxxxx
+ * MAIL_FROM = TradePulse <noreply@yourdomain.com>
+ * (or for testing: onboarding@resend.dev)
  */
 @Service
 @Slf4j
@@ -39,7 +39,7 @@ public class EmailService {
     private String mailFrom;
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private static final String RESEND_URL  = "https://api.resend.com/emails";
+    private static final String RESEND_URL = "https://api.resend.com/emails";
 
     // ── Send plain HTML email ────────────────────────────────────────────────
     @Async
@@ -50,10 +50,10 @@ public class EmailService {
         }
         try {
             Map<String, Object> payload = new HashMap<>();
-            payload.put("from",    mailFrom);
-            payload.put("to",      List.of(to));
+            payload.put("from", mailFrom);
+            payload.put("to", List.of(to));
             payload.put("subject", subject);
-            payload.put("html",    htmlBody);
+            payload.put("html", htmlBody);
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -73,10 +73,10 @@ public class EmailService {
     }
 
     // ── Send HTML email with PDF attachment (Base64 encoded) ────────────────
-    @Async
+    // @Async remove this after the testing of emails
     public void sendEmailWithAttachment(String to, String subject,
-                                        String htmlBody, byte[] pdfBytes,
-                                        String attachmentName) {
+            String htmlBody, byte[] pdfBytes,
+            String attachmentName) {
         if (resendApiKey == null || resendApiKey.isBlank()) {
             log.warn("RESEND_API_KEY not set — skipping email with attachment to {}", to);
             return;
@@ -85,13 +85,13 @@ public class EmailService {
             // Resend supports attachments as Base64
             Map<String, String> attachment = new HashMap<>();
             attachment.put("filename", attachmentName);
-            attachment.put("content",  Base64.getEncoder().encodeToString(pdfBytes));
+            attachment.put("content", Base64.getEncoder().encodeToString(pdfBytes));
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("from",        mailFrom);
-            payload.put("to",          List.of(to));
-            payload.put("subject",     subject);
-            payload.put("html",        htmlBody);
+            payload.put("from", mailFrom);
+            payload.put("to", List.of(to));
+            payload.put("subject", subject);
+            payload.put("html", htmlBody);
             payload.put("attachments", List.of(attachment));
 
             HttpHeaders headers = new HttpHeaders();
@@ -107,7 +107,8 @@ public class EmailService {
                 log.error("Resend API error {}: {}", resp.getStatusCode(), resp.getBody());
             }
         } catch (Exception e) {
-            log.error("Failed to send email with attachment to {}: {}", to, e.getMessage());
+            log.error("Resend API failed for {}: {}", to, e.getMessage());
+            throw new RuntimeException("Email send failed: " + e.getMessage(), e);
         }
     }
 }
