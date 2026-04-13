@@ -1,11 +1,11 @@
 // src/app/features/profile/profile.component.ts
-import { Component, OnInit, signal } from "@angular/core";
+import { Component, OnInit, signal, computed } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { HttpClient } from "@angular/common/http";
 import { RouterLink } from "@angular/router";
 import { environment } from "../../../environments/environment";
-import { AuthService } from '../../core/services/auth.service';
+import { AuthService } from "../../core/services/auth.service";
 
 interface UserProfile {
   id: string;
@@ -78,9 +78,7 @@ interface UserProfile {
               <div *ngIf="!avatarPreview()" class="avatar-initials">
                 {{ initials() }}
               </div>
-              <div class="avatar-overlay">
-                <span>📷 Change</span>
-              </div>
+              <div class="avatar-overlay"><span>📷 Change</span></div>
             </div>
             <input
               type="file"
@@ -128,29 +126,40 @@ interface UserProfile {
             </div>
           </div>
 
-          <!-- Account settings card -->
+          <!-- Account Settings — toggles auto-save on click -->
           <div class="card settings-card">
             <h3 class="card-title">Account Settings</h3>
+
             <div class="toggle-row">
               <div class="toggle-info">
                 <span class="toggle-label">Strict Mode</span>
                 <span class="toggle-desc">Reject incomplete trade entries</span>
               </div>
               <label class="switch">
-                <input type="checkbox" [(ngModel)]="form.strictMode" />
+                <input
+                  type="checkbox"
+                  [checked]="form.strictMode"
+                  (change)="onToggleChange('strictMode', $event)"
+                />
                 <span class="slider"></span>
               </label>
             </div>
+
             <div class="toggle-row">
               <div class="toggle-info">
                 <span class="toggle-label">Email Notifications</span>
                 <span class="toggle-desc">Trade alerts & reminders</span>
               </div>
               <label class="switch">
-                <input type="checkbox" [(ngModel)]="form.emailNotifications" />
+                <input
+                  type="checkbox"
+                  [checked]="form.emailNotifications"
+                  (change)="onToggleChange('emailNotifications', $event)"
+                />
                 <span class="slider"></span>
               </label>
             </div>
+
             <div class="toggle-row">
               <div class="toggle-info">
                 <span class="toggle-label">Weekly Report Email</span>
@@ -159,16 +168,22 @@ interface UserProfile {
                 >
               </div>
               <label class="switch">
-                <input type="checkbox" [(ngModel)]="form.weeklyReportEmail" />
+                <input
+                  type="checkbox"
+                  [checked]="form.weeklyReportEmail"
+                  (change)="onToggleChange('weeklyReportEmail', $event)"
+                />
                 <span class="slider"></span>
               </label>
             </div>
+
+            <div class="toggle-saving" *ngIf="toggleSaving()">Saving...</div>
           </div>
         </div>
 
         <!-- ─── RIGHT: Edit Form ─── -->
         <div class="main-col">
-          <!-- Section 1: Personal Info -->
+          <!-- Personal Info -->
           <div class="card">
             <h3 class="card-title">Personal Information</h3>
             <div class="form-grid">
@@ -218,7 +233,7 @@ interface UserProfile {
             </div>
           </div>
 
-          <!-- Section 2: Trading Identity -->
+          <!-- Trading Identity -->
           <div class="card">
             <h3 class="card-title">Trading Identity</h3>
             <div class="form-grid">
@@ -260,7 +275,6 @@ interface UserProfile {
               </div>
             </div>
 
-            <!-- Markets Traded -->
             <div class="fg full-width" style="margin-top:16px">
               <label
                 >Markets Traded
@@ -279,7 +293,6 @@ interface UserProfile {
               </div>
             </div>
 
-            <!-- Platforms Used -->
             <div class="fg full-width" style="margin-top:16px">
               <label>All Platforms / Brokers Used</label>
               <div class="chip-grid">
@@ -296,7 +309,7 @@ interface UserProfile {
             </div>
           </div>
 
-          <!-- Section 3: Capital & Risk Profile -->
+          <!-- Capital & Risk -->
           <div class="card">
             <h3 class="card-title">Capital & Risk Profile</h3>
             <p class="card-desc">
@@ -350,7 +363,6 @@ interface UserProfile {
               </div>
             </div>
 
-            <!-- Risk meter -->
             <div class="risk-meter" *ngIf="form.riskPerTradePercent">
               <span class="risk-label">Risk Profile:</span>
               <div class="risk-bar-track">
@@ -387,7 +399,7 @@ interface UserProfile {
             </div>
           </div>
 
-          <!-- Section 4: Goals & Self-Assessment -->
+          <!-- Goals & Self-Assessment -->
           <div class="card">
             <h3 class="card-title">Goals & Self-Assessment</h3>
             <p class="card-desc">
@@ -434,7 +446,7 @@ interface UserProfile {
             </div>
           </div>
 
-          <!-- Save / Error -->
+          <!-- Save -->
           <div class="save-row">
             <div class="save-error" *ngIf="saveError()">{{ saveError() }}</div>
             <button class="btn-save" (click)="save()" [disabled]="saving()">
@@ -444,7 +456,6 @@ interface UserProfile {
         </div>
       </div>
 
-      <!-- Loading -->
       <div class="loading" *ngIf="!profile()">Loading profile...</div>
 
       <!-- Toast -->
@@ -467,7 +478,6 @@ interface UserProfile {
         position: relative;
       }
 
-      /* ─── Header ──────────────────────────────────────── */
       .page-header {
         display: flex;
         justify-content: space-between;
@@ -519,7 +529,6 @@ interface UserProfile {
         color: #475569;
       }
 
-      /* ─── Layout ──────────────────────────────────────── */
       .profile-layout {
         display: grid;
         grid-template-columns: 280px 1fr;
@@ -539,7 +548,6 @@ interface UserProfile {
         gap: 20px;
       }
 
-      /* ─── Cards ───────────────────────────────────────── */
       .card {
         background: #0d1117;
         border: 1px solid #1e2433;
@@ -560,7 +568,6 @@ interface UserProfile {
         margin: -8px 0 16px;
       }
 
-      /* ─── Avatar ──────────────────────────────────────── */
       .avatar-card {
         display: flex;
         flex-direction: column;
@@ -611,7 +618,6 @@ interface UserProfile {
       .avatar-wrap:hover .avatar-overlay {
         opacity: 1;
       }
-
       .avatar-info {
         text-align: center;
       }
@@ -635,7 +641,6 @@ interface UserProfile {
         color: #3b82f6;
         border: 1px solid rgba(59, 130, 246, 0.3);
       }
-
       .quick-stats {
         width: 100%;
         border-top: 1px solid #1e2433;
@@ -657,7 +662,6 @@ interface UserProfile {
         font-weight: 600;
       }
 
-      /* ─── Settings toggles ────────────────────────────── */
       .settings-card {
       }
       .toggle-row {
@@ -667,7 +671,7 @@ interface UserProfile {
         padding: 12px 0;
         border-bottom: 1px solid #111827;
       }
-      .toggle-row:last-child {
+      .toggle-row:last-of-type {
         border-bottom: none;
       }
       .toggle-info {
@@ -684,8 +688,13 @@ interface UserProfile {
         font-size: 11px;
         color: #475569;
       }
+      .toggle-saving {
+        font-size: 11px;
+        color: #3b82f6;
+        text-align: right;
+        padding-top: 8px;
+      }
 
-      /* Toggle switch */
       .switch {
         position: relative;
         width: 40px;
@@ -723,7 +732,6 @@ interface UserProfile {
         transform: translateX(18px);
       }
 
-      /* ─── Form ────────────────────────────────────────── */
       .form-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -735,7 +743,7 @@ interface UserProfile {
         gap: 5px;
       }
       .full-width {
-        grid-column: 1 / -1;
+        grid-column: 1/-1;
       }
       label {
         font-size: 11px;
@@ -780,7 +788,6 @@ interface UserProfile {
         line-height: 1.5;
       }
 
-      /* ─── Chips ───────────────────────────────────────── */
       .chip-grid {
         display: flex;
         flex-wrap: wrap;
@@ -813,7 +820,6 @@ interface UserProfile {
         color: #a78bfa;
       }
 
-      /* ─── Risk meter ──────────────────────────────────── */
       .risk-meter {
         display: flex;
         align-items: center;
@@ -870,7 +876,6 @@ interface UserProfile {
         background: rgba(239, 68, 68, 0.1);
       }
 
-      /* ─── Save row ────────────────────────────────────── */
       .save-row {
         display: flex;
         justify-content: flex-end;
@@ -909,7 +914,6 @@ interface UserProfile {
         color: #64748b;
       }
 
-      /* ─── Toast ───────────────────────────────────────── */
       .toast {
         position: fixed;
         bottom: 32px;
@@ -966,6 +970,7 @@ export class ProfileComponent implements OnInit {
   profile = signal<UserProfile | null>(null);
   avatarPreview = signal<string | null>(null);
   saving = signal(false);
+  toggleSaving = signal(false);
   saveError = signal("");
   toastMessage = signal("");
   toastType = signal<"success" | "error">("success");
@@ -974,7 +979,6 @@ export class ProfileComponent implements OnInit {
 
   readonly Math = Math;
 
-  // Form state — mirrors profile fields
   form = {
     fullName: "",
     displayName: "",
@@ -996,8 +1000,8 @@ export class ProfileComponent implements OnInit {
     biggestWeakness: "",
     whyImproving: "",
     strictMode: false,
-    emailNotifications: true,
-    weeklyReportEmail: true,
+    emailNotifications: false,
+    weeklyReportEmail: false,
   };
 
   readonly marketOptions = [
@@ -1009,7 +1013,6 @@ export class ProfileComponent implements OnInit {
     "Forex",
     "Index",
   ];
-
   readonly brokers = [
     "Zerodha",
     "Upstox",
@@ -1026,7 +1029,6 @@ export class ProfileComponent implements OnInit {
     "WazirX",
     "Other",
   ];
-
   readonly goalOptions = [
     "Full-time Trading Income",
     "Supplement Salary",
@@ -1035,7 +1037,6 @@ export class ProfileComponent implements OnInit {
     "Learn & Improve",
     "Side Business",
   ];
-
   readonly weaknessOptions = [
     "FOMO Entries",
     "Early Exits",
@@ -1047,10 +1048,10 @@ export class ProfileComponent implements OnInit {
     "Emotional Decisions",
   ];
 
-constructor(
-  private http: HttpClient,
-  private authService: AuthService   // ← ADD THIS
-) {}
+  constructor(
+    private http: HttpClient,
+    private authService: AuthService,
+  ) {}
 
   ngOnInit() {
     this.http.get<UserProfile>(`${environment.apiUrl}/profile`).subscribe({
@@ -1082,77 +1083,109 @@ constructor(
     this.form.tradingGoal = p.tradingGoal || "";
     this.form.biggestWeakness = p.biggestWeakness || "";
     this.form.whyImproving = p.whyImproving || "";
-    this.form.strictMode = p.strictMode ?? false;
-    this.form.emailNotifications = p.emailNotifications ?? true;
-    this.form.weeklyReportEmail = p.weeklyReportEmail ?? true;
+    // ── Exact boolean from backend — no default override ──────────────────
+    this.form.strictMode = p.strictMode === true;
+    this.form.emailNotifications = p.emailNotifications === true;
+    this.form.weeklyReportEmail = p.weeklyReportEmail === true;
   }
 
-  // ─── REPLACE save() ────────────────────────────────────────────────────────
-save() {
-  if (this.saving()) return;
-  this.saving.set(true);
-  this.saveError.set('');
+  // ── Toggle auto-save — fires immediately, no Save button needed ───────────
+  onToggleChange(
+    field: "strictMode" | "emailNotifications" | "weeklyReportEmail",
+    event: Event,
+  ) {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.form[field] = checked; // update local state instantly
+    this.toggleSaving.set(true);
 
-  const payload = { ...this.form };
-
-  this.http.put<any>(`${environment.apiUrl}/profile`, payload).subscribe({
-    next: (updated) => {
-      this.profile.set(updated);
-      this.saving.set(false);
-
-      // ── KEY FIX: push avatar + displayName into AuthService
-      // so the sidebar reflects the new avatar immediately and
-      // persists across page navigation without re-fetching
-      this.authService.updateLocalUser({
-        displayName:  updated.displayName || updated.fullName || updated.email,
-        fullName:     updated.fullName,
-        avatarBase64: updated.avatarBase64 || undefined,
-        planType:     updated.planType,
+    this.http
+      .put<any>(`${environment.apiUrl}/profile`, { [field]: checked })
+      .subscribe({
+        next: (updated) => {
+          this.profile.set(updated);
+          // Re-sync exact values from backend to keep form in sync
+          this.form.strictMode = updated.strictMode === true;
+          this.form.emailNotifications = updated.emailNotifications === true;
+          this.form.weeklyReportEmail = updated.weeklyReportEmail === true;
+          this.toggleSaving.set(false);
+          this.showToast(
+            field === "strictMode"
+              ? checked
+                ? "Strict Mode ON"
+                : "Strict Mode OFF"
+              : field === "emailNotifications"
+                ? checked
+                  ? "Email alerts enabled"
+                  : "Email alerts disabled"
+                : checked
+                  ? "Weekly report enabled"
+                  : "Weekly report disabled",
+            "success",
+          );
+        },
+        error: () => {
+          this.form[field] = !checked; // revert on failure
+          this.toggleSaving.set(false);
+          this.showToast("Failed to save setting. Try again.", "error");
+        },
       });
+  }
 
-      this.showToast('Profile saved successfully ✓', 'success');
-    },
-    error: (err) => {
-      this.saving.set(false);
-      const msg = err?.error?.message || 'Failed to save. Please try again.';
-      this.saveError.set(msg);
-      this.showToast(msg, 'error');
-    }
-  });
-}
+  // ── Save full profile ─────────────────────────────────────────────────────
+  save() {
+    if (this.saving()) return;
+    this.saving.set(true);
+    this.saveError.set("");
 
+    this.http
+      .put<any>(`${environment.apiUrl}/profile`, { ...this.form })
+      .subscribe({
+        next: (updated) => {
+          this.profile.set(updated);
+          this.populateForm(updated);
+          this.saving.set(false);
+          this.authService.updateLocalUser({
+            displayName:
+              updated.displayName || updated.fullName || updated.email,
+            fullName: updated.fullName,
+            avatarBase64: updated.avatarBase64 || undefined,
+            planType: updated.planType,
+          });
+          this.showToast("Profile saved successfully ✓", "success");
+        },
+        error: (err) => {
+          this.saving.set(false);
+          const msg =
+            err?.error?.message || "Failed to save. Please try again.";
+          this.saveError.set(msg);
+          this.showToast(msg, "error");
+        },
+      });
+  }
 
-  // ─── Avatar upload ─────────────────────────────────────
+  // ── Avatar ────────────────────────────────────────────────────────────────
   triggerAvatarUpload() {
-    const input = document.querySelector(
-      'input[type="file"]',
-    ) as HTMLInputElement;
-    input?.click();
+    (document.querySelector('input[type="file"]') as HTMLInputElement)?.click();
   }
 
-  // ─── REPLACE onAvatarSelected() ───────────────────────────────────────────
-onAvatarSelected(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  if (file.size > 200 * 1024) {
-    this.showToast('Avatar must be under 200KB. Please compress it first.', 'error');
-    return;
+  onAvatarSelected(event: Event) {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    if (file.size > 200 * 1024) {
+      this.showToast("Avatar must be under 200KB.", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      this.avatarPreview.set(base64);
+      this.form.avatarBase64 = base64;
+      this.authService.updateLocalUser({ avatarBase64: base64 });
+    };
+    reader.readAsDataURL(file);
   }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const base64 = e.target?.result as string;
-    this.avatarPreview.set(base64);
-    this.form.avatarBase64 = base64;
 
-    // ── Immediately update sidebar avatar while still on profile page
-    // (full save happens when user clicks Save Profile)
-    this.authService.updateLocalUser({ avatarBase64: base64 });
-  };
-  reader.readAsDataURL(file);
-}
-
-
-  // ─── Helpers ───────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
   toggleList(list: string[], item: string) {
     const idx = list.indexOf(item);
     if (idx >= 0) list.splice(idx, 1);
@@ -1170,13 +1203,16 @@ onAvatarSelected(event: Event) {
   }
 
   expLabel(level: string): string {
-    const map: Record<string, string> = {
-      BEGINNER: "< 1 year",
-      INTERMEDIATE: "1–3 yrs",
-      ADVANCED: "3–7 yrs",
-      PROFESSIONAL: "7+ yrs",
-    };
-    return map[level] || "—";
+    return (
+      (
+        {
+          BEGINNER: "< 1 year",
+          INTERMEDIATE: "1–3 yrs",
+          ADVANCED: "3–7 yrs",
+          PROFESSIONAL: "7+ yrs",
+        } as any
+      )[level] || "—"
+    );
   }
 
   formatNum(n: number): string {
