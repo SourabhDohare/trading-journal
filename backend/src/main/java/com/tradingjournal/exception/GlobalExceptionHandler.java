@@ -9,6 +9,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -36,8 +38,18 @@ public class GlobalExceptionHandler {
                 .body(error(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), ex.getIssues()));
     }
 
+    // ── FIXED: uses same error() helper as all other handlers ────────────────
+    // No .builder(), no .path() — ErrorResponse is @Data, not @Builder
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<ErrorResponse> handleValidationException(
+            ValidationException ex, HttpServletRequest request) {
+        log.warn("Validation error at {}: {}", request.getRequestURI(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(error(HttpStatus.BAD_REQUEST, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
+    public ResponseEntity<ErrorResponse> handleMethodValidation(MethodArgumentNotValidException ex) {
         Map<String, String> fieldErrors = new HashMap<>();
         for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
             fieldErrors.put(fe.getField(), fe.getDefaultMessage());
@@ -60,6 +72,7 @@ public class GlobalExceptionHandler {
                 .body(error(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", null));
     }
 
+    // ── Shared builder — all handlers use this ────────────────────────────────
     private ErrorResponse error(HttpStatus status, String message, List<String> details) {
         ErrorResponse resp = new ErrorResponse();
         resp.setStatus(status.value());
@@ -70,13 +83,14 @@ public class GlobalExceptionHandler {
         return resp;
     }
 
+    // ── ErrorResponse — @Data only, NO @Builder ───────────────────────────────
     @lombok.Data
     public static class ErrorResponse {
-        private int status;
-        private String error;
-        private String message;
-        private List<String> details;
-        private Map<String, String> fieldErrors;
-        private LocalDateTime timestamp;
+        private int                  status;
+        private String               error;
+        private String               message;
+        private List<String>         details;
+        private Map<String, String>  fieldErrors;
+        private LocalDateTime        timestamp;
     }
 }
