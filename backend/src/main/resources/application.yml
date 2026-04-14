@@ -1,5 +1,6 @@
 # ===================================
 # Trading Journal - Application Config
+# COMPLETE FILE — includes OAuth2 section
 # ===================================
 spring:
   application:
@@ -7,16 +8,12 @@ spring:
 
   data:
     mongodb:
-      # uri: ${MONGODB_URI:mongodb://localhost:27017/trading_journal}
-      # mongodb+srv://foodyuser:<db_password>@foodyzone-cluster.gdvp3o5.mongodb.net/?appName=foodyzone-cluster
       uri: ${MONGODB_URI:mongodb+srv://foodyuser:Sourabh2001@foodyzone-cluster.gdvp3o5.mongodb.net/trading_journal?appName=foodyzone-cluster}
       database: trading_journal
       auto-index-creation: false
 
-  # ADD THESE to make startup faster
   main:
-    lazy-initialization: true   # ← beans initialize on first use, not at startup
-
+    lazy-initialization: true
 
   servlet:
     multipart:
@@ -26,18 +23,47 @@ spring:
   cache:
     type: simple
 
+  # ── OAuth2 Social Login ─────────────────────────────────────────────────
+  # These endpoints are ONLY registered when this block exists AND
+  # spring-boot-starter-oauth2-client is in pom.xml
   security:
     oauth2:
       client:
         registration:
+
           google:
-            client-id: ${GOOGLE_CLIENT_ID}
+            client-id:     ${GOOGLE_CLIENT_ID}
             client-secret: ${GOOGLE_CLIENT_SECRET}
-            scope: [email, profile]
+            scope:
+              - email
+              - profile
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            authorization-grant-type: authorization_code
+            client-name: Google
+
           github:
-            client-id: ${GITHUB_CLIENT_ID}
+            client-id:     ${GITHUB_CLIENT_ID}
             client-secret: ${GITHUB_CLIENT_SECRET}
-            scope: [user:email, read:user]
+            scope:
+              - user:email
+              - read:user
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            authorization-grant-type: authorization_code
+            client-name: GitHub
+
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri:         https://www.googleapis.com/oauth2/v4/token
+            user-info-uri:     https://www.googleapis.com/oauth2/v3/userinfo
+            user-name-attribute: sub
+
+          github:
+            authorization-uri: https://github.com/login/oauth/authorize
+            token-uri:         https://github.com/login/oauth/access_token
+            user-info-uri:     https://api.github.com/user
+            user-name-attribute: id
+  # ────────────────────────────────────────────────────────────────────────
 
 server:
   port: ${PORT:8080}
@@ -51,18 +77,18 @@ server:
 # JWT Configuration
 # ===================================
 app:
-  oauth2:
-    redirect-uri: ${OAUTH2_REDIRECT_URI}
-    
   jwt:
     secret: ${JWT_SECRET:tradepulse-local-dev-secret-key-minimum-32-chars}
-    expiration: 86400000       # 24 hours
-    refresh-expiration: 604800000  # 7 days
+    expiration: 86400000
+    refresh-expiration: 604800000
 
   cors:
-    # allowed-origins: ${ALLOWED_ORIGINS:https://localhost:4200,http://localhost:3000}
-    # vercel link
     allowed-origins: ${ALLOWED_ORIGINS:https://trading-journal-plum-gamma.vercel.app}
+
+  # OAuth2 redirect — where Spring sends the browser after successful login
+  # Must match OAUTH2_REDIRECT_URI env var on Render
+  oauth2:
+    redirect-uri: ${OAUTH2_REDIRECT_URI:https://trading-journal-plum-gamma.vercel.app/auth/callback}
 
   upload:
     dir: ${UPLOAD_DIR:./uploads}
