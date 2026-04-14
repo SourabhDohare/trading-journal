@@ -1,6 +1,5 @@
 # ===================================
 # Trading Journal - Application Config
-# COMPLETE FILE — includes OAuth2 section
 # ===================================
 spring:
   application:
@@ -23,9 +22,10 @@ spring:
   cache:
     type: simple
 
-  # ── OAuth2 Social Login ─────────────────────────────────────────────────
-  # These endpoints are ONLY registered when this block exists AND
-  # spring-boot-starter-oauth2-client is in pom.xml
+  # ── OAuth2 Social Login ──────────────────────────────────────────────────
+  # Context-path is /api/v1, so Spring registers:
+  #   Authorization: /api/v1/oauth2/authorization/{provider}
+  #   Callback:      /api/v1/login/oauth2/code/{provider}
   security:
     oauth2:
       client:
@@ -37,7 +37,8 @@ spring:
             scope:
               - email
               - profile
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            # HARDCODED with /api/v1 — avoids {baseUrl} context-path ambiguity
+            redirect-uri: "https://trading-journal-w0sl.onrender.com/api/v1/login/oauth2/code/google"
             authorization-grant-type: authorization_code
             client-name: Google
 
@@ -47,21 +48,21 @@ spring:
             scope:
               - user:email
               - read:user
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            redirect-uri: "https://trading-journal-w0sl.onrender.com/api/v1/login/oauth2/code/github"
             authorization-grant-type: authorization_code
             client-name: GitHub
 
         provider:
           google:
-            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
-            token-uri:         https://www.googleapis.com/oauth2/v4/token
-            user-info-uri:     https://www.googleapis.com/oauth2/v3/userinfo
+            authorization-uri:  https://accounts.google.com/o/oauth2/v2/auth
+            token-uri:          https://www.googleapis.com/oauth2/v4/token
+            user-info-uri:      https://www.googleapis.com/oauth2/v3/userinfo
             user-name-attribute: sub
 
           github:
-            authorization-uri: https://github.com/login/oauth/authorize
-            token-uri:         https://github.com/login/oauth/access_token
-            user-info-uri:     https://api.github.com/user
+            authorization-uri:  https://github.com/login/oauth/authorize
+            token-uri:          https://github.com/login/oauth/access_token
+            user-info-uri:      https://api.github.com/user
             user-name-attribute: id
   # ────────────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ server:
     include-binding-errors: always
 
 # ===================================
-# JWT Configuration
+# JWT
 # ===================================
 app:
   jwt:
@@ -85,8 +86,6 @@ app:
   cors:
     allowed-origins: ${ALLOWED_ORIGINS:https://trading-journal-plum-gamma.vercel.app}
 
-  # OAuth2 redirect — where Spring sends the browser after successful login
-  # Must match OAUTH2_REDIRECT_URI env var on Render
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI:https://trading-journal-plum-gamma.vercel.app/auth/callback}
 
@@ -115,7 +114,7 @@ logging:
     org.springframework.data.mongodb: INFO
 
 # ===================================
-# SpringDoc / Swagger
+# SpringDoc
 # ===================================
 springdoc:
   api-docs:

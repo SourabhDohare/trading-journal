@@ -1,4 +1,6 @@
 // src/app/features/auth/register.component.ts
+// FIX: same URL fix as login — use apiUrl (has /api/v1)
+
 import { Component, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
@@ -21,7 +23,6 @@ import { environment } from "../../../environments/environment";
         <h1 class="auth-title">Create account</h1>
         <p class="auth-sub">Start building your trading edge today.</p>
 
-        <!-- OAuth providers -->
         <div class="oauth-stack">
           <a [href]="googleUrl" class="oauth-btn google-btn">
             <svg width="18" height="18" viewBox="0 0 24 24">
@@ -98,13 +99,10 @@ import { environment } from "../../../environments/environment";
                 (keydown.enter)="register()"
                 autocomplete="new-password"
               />
-              <!-- FIX: no arrow function in template — call a method instead -->
               <button type="button" class="pw-toggle" (click)="togglePw()">
                 {{ showPw() ? "🙈" : "👁" }}
               </button>
             </div>
-
-            <!-- FIX: *ngIf uses > for comparison — must use gt() method instead -->
             <div class="strength-wrap" *ngIf="hasPassword()">
               <div class="strength-track">
                 <div
@@ -113,9 +111,9 @@ import { environment } from "../../../environments/environment";
                   [ngClass]="strengthClass()"
                 ></div>
               </div>
-              <span class="strength-label" [ngClass]="strengthClass()">
-                {{ strengthLabel() }}
-              </span>
+              <span class="strength-label" [ngClass]="strengthClass()">{{
+                strengthLabel()
+              }}</span>
             </div>
           </div>
         </div>
@@ -129,10 +127,9 @@ import { environment } from "../../../environments/environment";
         <p class="switch-link">
           Already a trader? <a routerLink="/auth/login">Sign in</a>
         </p>
-
         <p class="terms">
           By creating an account you agree to our
-          <a href="#" class="terms-a">Terms of Service</a> and
+          <a href="#" class="terms-a">Terms</a> and
           <a href="#" class="terms-a">Privacy Policy</a>
         </p>
       </div>
@@ -203,7 +200,6 @@ import { environment } from "../../../environments/environment";
         font-weight: 600;
         text-decoration: none;
         transition: all 0.15s;
-        cursor: pointer;
         border: 1px solid;
       }
       .google-btn {
@@ -213,7 +209,6 @@ import { environment } from "../../../environments/environment";
       }
       .google-btn:hover {
         background: #f9fafb;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
       }
       .github-btn {
         background: #24292e;
@@ -222,7 +217,6 @@ import { environment } from "../../../environments/environment";
       }
       .github-btn:hover {
         background: #2f363d;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
       .divider {
         display: flex;
@@ -323,9 +317,7 @@ import { environment } from "../../../environments/environment";
       .strength-fill {
         height: 100%;
         border-radius: 2px;
-        transition:
-          width 0.3s,
-          background 0.3s;
+        transition: width 0.3s;
       }
       .strength-fill.weak {
         background: #ef4444;
@@ -342,7 +334,6 @@ import { environment } from "../../../environments/environment";
       .strength-label {
         font-size: 11px;
         font-weight: 600;
-        white-space: nowrap;
       }
       .strength-label.weak {
         color: #ef4444;
@@ -377,11 +368,9 @@ import { environment } from "../../../environments/environment";
         cursor: pointer;
         margin-top: 16px;
         transition: all 0.15s;
-        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
       }
       .btn-primary:hover:not(:disabled) {
         transform: translateY(-1px);
-        box-shadow: 0 6px 18px rgba(59, 130, 246, 0.4);
       }
       .btn-primary:disabled {
         opacity: 0.6;
@@ -404,7 +393,6 @@ import { environment } from "../../../environments/environment";
         font-size: 11px;
         color: #334155;
         margin: 16px 0 0;
-        line-height: 1.6;
       }
       .terms-a {
         color: #475569;
@@ -422,21 +410,18 @@ export class RegisterComponent {
   loading = signal(false);
   error = signal("");
 
-  readonly googleUrl = `${environment.backendUrl}/oauth2/authorization/google`;
-  readonly githubUrl = `${environment.backendUrl}/oauth2/authorization/github`;
+  // FIX: use apiUrl (has /api/v1) not backendUrl
+  readonly googleUrl = `${environment.apiUrl}/oauth2/authorization/google`;
+  readonly githubUrl = `${environment.apiUrl}/oauth2/authorization/github`;
 
   constructor(
     private authService: AuthService,
     private router: Router,
   ) {}
 
-  // FIX 1: method instead of arrow function — Angular templates can't use =>
   togglePw(): void {
     this.showPw.update((v) => !v);
   }
-
-  // FIX 2: *ngIf="password.length > 0" fails because > is not allowed in templates
-  // Use a method instead
   hasPassword(): boolean {
     return this.password.length > 0;
   }
@@ -452,24 +437,18 @@ export class RegisterComponent {
     if (/[^A-Za-z0-9]/.test(p)) s += 20;
     return Math.min(100, s);
   }
-
   strengthClass(): string {
     const s = this.passwordStrength();
-    if (s < 30) return "weak";
-    if (s < 60) return "fair";
-    if (s < 80) return "good";
-    return "strong";
+    return s < 30 ? "weak" : s < 60 ? "fair" : s < 80 ? "good" : "strong";
   }
-
-  // FIX 3: explicit return type string (not string | undefined)
   strengthLabel(): string {
-    const map: Record<string, string> = {
+    const m: Record<string, string> = {
       weak: "Weak",
       fair: "Fair",
       good: "Good",
       strong: "Strong",
     };
-    return map[this.strengthClass()] ?? "Weak";
+    return m[this.strengthClass()] ?? "Weak";
   }
 
   register() {
@@ -497,9 +476,7 @@ export class RegisterComponent {
         },
         error: (err) => {
           this.loading.set(false);
-          this.error.set(
-            err?.error?.message || "Registration failed. Please try again.",
-          );
+          this.error.set(err?.error?.message || "Registration failed.");
         },
       });
   }

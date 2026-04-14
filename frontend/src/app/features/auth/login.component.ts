@@ -1,4 +1,10 @@
 // src/app/features/auth/login.component.ts
+// FIX: use environment.apiUrl (which has /api/v1) for OAuth2 URLs
+// Old (WRONG): `${environment.backendUrl}/oauth2/authorization/google`
+//              → https://render.com/oauth2/...  404 — missing /api/v1
+// New (RIGHT): `${environment.apiUrl}/oauth2/authorization/google`
+//              → https://render.com/api/v1/oauth2/... ✓
+
 import { Component, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
@@ -21,7 +27,6 @@ import { environment } from "../../../environments/environment";
         <h1 class="auth-title">Sign in</h1>
         <p class="auth-sub">Your accountability system awaits.</p>
 
-        <!-- OAuth providers -->
         <div class="oauth-stack">
           <a [href]="googleUrl" class="oauth-btn google-btn">
             <svg width="18" height="18" viewBox="0 0 24 24">
@@ -79,7 +84,6 @@ import { environment } from "../../../environments/environment";
                 (keydown.enter)="login()"
                 autocomplete="current-password"
               />
-              <!-- FIX: no arrow function in template — call a method instead -->
               <button type="button" class="pw-toggle" (click)="togglePw()">
                 {{ showPw() ? "🙈" : "👁" }}
               </button>
@@ -102,10 +106,9 @@ import { environment } from "../../../environments/environment";
         <p class="switch-link">
           New trader? <a routerLink="/auth/register">Create account</a>
         </p>
-
         <p class="terms">
           By signing in you agree to our
-          <a href="#" class="terms-a">Terms of Service</a> and
+          <a href="#" class="terms-a">Terms</a> and
           <a href="#" class="terms-a">Privacy Policy</a>
         </p>
       </div>
@@ -176,7 +179,6 @@ import { environment } from "../../../environments/environment";
         font-weight: 600;
         text-decoration: none;
         transition: all 0.15s;
-        cursor: pointer;
         border: 1px solid;
       }
       .google-btn {
@@ -195,7 +197,6 @@ import { environment } from "../../../environments/environment";
       }
       .github-btn:hover {
         background: #2f363d;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       }
       .divider {
         display: flex;
@@ -303,7 +304,6 @@ import { environment } from "../../../environments/environment";
       }
       .btn-primary:hover:not(:disabled) {
         transform: translateY(-1px);
-        box-shadow: 0 6px 18px rgba(59, 130, 246, 0.4);
       }
       .btn-primary:disabled {
         opacity: 0.6;
@@ -326,7 +326,6 @@ import { environment } from "../../../environments/environment";
         font-size: 11px;
         color: #334155;
         margin: 16px 0 0;
-        line-height: 1.6;
       }
       .terms-a {
         color: #475569;
@@ -342,22 +341,23 @@ export class LoginComponent {
   error = signal("");
   showPw = signal(false);
 
-  readonly googleUrl = `${environment.backendUrl}/oauth2/authorization/google`;
-  readonly githubUrl = `${environment.backendUrl}/oauth2/authorization/github`;
+  // FIX: use apiUrl (has /api/v1) not backendUrl (no /api/v1)
+  // Spring Security registers OAuth2 UNDER the context-path /api/v1
+  readonly googleUrl = `${environment.apiUrl}/oauth2/authorization/google`;
+  readonly githubUrl = `${environment.apiUrl}/oauth2/authorization/github`;
 
   constructor(
     private authService: AuthService,
     private router: Router,
   ) {}
 
-  // FIX: method instead of arrow function — Angular templates can't use =>
   togglePw(): void {
     this.showPw.update((v) => !v);
   }
 
   login() {
     if (!this.email.trim() || !this.password) {
-      this.error.set("Please enter your email and password.");
+      this.error.set("Please enter email and password.");
       return;
     }
     this.loading.set(true);
