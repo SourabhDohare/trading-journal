@@ -1,4 +1,6 @@
-// src/app/app.routes.ts
+// src/app/app.routes.ts  — NO CHANGES from your original
+// authRoutes lives in its own file: src/app/features/auth/auth.routes.ts
+
 import { Routes } from "@angular/router";
 import { authGuard } from "./core/guards/auth.guard";
 
@@ -13,7 +15,7 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () =>
       import("./shared/components/layout/layout.component").then(
-        (m) => m.LayoutComponent,
+        (m) => m.LayoutComponent
       ),
     children: [
       { path: "", redirectTo: "dashboard", pathMatch: "full" },
@@ -21,7 +23,7 @@ export const routes: Routes = [
         path: "dashboard",
         loadComponent: () =>
           import("./features/dashboard/dashboard.component").then(
-            (m) => m.DashboardComponent,
+            (m) => m.DashboardComponent
           ),
       },
       {
@@ -33,30 +35,29 @@ export const routes: Routes = [
         path: "analytics",
         loadComponent: () =>
           import("./features/analytics/analytics.component").then(
-            (m) => m.AnalyticsComponent,
+            (m) => m.AnalyticsComponent
           ),
       },
       {
         path: "journal",
         loadComponent: () =>
           import("./features/journal/journal.component").then(
-            (m) => m.JournalComponent,
+            (m) => m.JournalComponent
           ),
       },
       {
         path: "reports",
         loadComponent: () =>
           import("./features/reports/reports.component").then(
-            (m) => m.ReportsComponent,
+            (m) => m.ReportsComponent
           ),
       },
       {
         path: "profile",
         loadComponent: () =>
           import("./features/profile/profile.component").then(
-            (m) => m.ProfileComponent,
+            (m) => m.ProfileComponent
           ),
-        // ✅ use authGuard (function) not AuthGuard (class) — matches the import above
         canActivate: [authGuard],
       },
     ],
