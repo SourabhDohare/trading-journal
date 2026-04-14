@@ -10,17 +10,17 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
-import java.util.Optional;
-
 /**
- * Handles OAuth2 user info from Google and GitHub.
+ * Enterprise-level OAuth2 user handling:
  *
- * Flow:
- *  1. Spring Security calls loadUser() after provider authenticates the user
- *  2. We extract email/name/avatar from the provider-specific attributes
- *  3. If user exists (by email) → update OAuth fields, keep existing data
- *  4. If user is new → create a full User document
- *  5. Save and return the OAuth2User — OAuth2SuccessHandler then generates JWT
+ *  1. Uses case-insensitive email lookup to find existing users.
+ *     This prevents duplicate accounts when legacy email has capital letters
+ *     e.g. "Sourabhvijaydohare@gmail.com" → found when logging in with
+ *          "sourabhvijaydohare@gmail.com" via Google.
+ *
+ *  2. If user exists → links their OAuth provider info, keeps all existing data.
+ *  3. If user is new → creates a complete profile.
+ *  4. Normalises email to lowercase on save so all future lookups are consistent.
  */
 @Service
 @RequiredArgsConstructor
@@ -32,71 +32,80 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     @Override
     public OAuth2User loadUser(OAuth2UserRequest request) throws OAuth2AuthenticationException {
         OAuth2User oAuth2User = super.loadUser(request);
+        String provider = request.getClientRegistration().getRegistrationId(); // "google" | "github"
 
-        // "google" or "github"
-        String provider = request.getClientRegistration().getRegistrationId();
-
+        // ── Extract attributes ─────────────────────────────────────────────
         String providerId, email, name, avatarUrl;
 
         if ("google".equals(provider)) {
-            // Google attributes: sub, email, name, picture
             providerId = oAuth2User.getAttribute("sub");
             email      = oAuth2User.getAttribute("email");
             name       = oAuth2User.getAttribute("name");
             avatarUrl  = oAuth2User.getAttribute("picture");
 
         } else if ("github".equals(provider)) {
-            // GitHub attributes: id (int), email (can be null if private), name or login, avatar_url
             Object rawId = oAuth2User.getAttribute("id");
             providerId   = rawId != null ? String.valueOf(rawId) : "gh_unknown";
             email        = oAuth2User.getAttribute("email");
             name         = oAuth2User.getAttribute("name") != null
                          ? oAuth2User.getAttribute("name")
-                         : oAuth2User.getAttribute("login"); // fallback to username
+                         : oAuth2User.getAttribute("login");
             avatarUrl    = oAuth2User.getAttribute("avatar_url");
 
         } else {
-            throw new OAuth2AuthenticationException("Unsupported OAuth2 provider: " + provider);
+            throw new OAuth2AuthenticationException("Unsupported provider: " + provider);
         }
 
-        // GitHub users with private email — synthesise a unique non-null address
+        // GitHub private email fallback
         if (email == null || email.isBlank()) {
             email = providerId + "@" + provider + ".noreply";
         }
 
-        String finalEmail = email.toLowerCase().trim();
-        log.info("OAuth2 login — provider={} email={}", provider, finalEmail);
+        // Always normalise — prevents case-mismatch duplicates
+        final String normalisedEmail = email.toLowerCase().trim();
+        log.info("OAuth2 [{}] — email={}", provider, normalisedEmail);
 
-        Optional<User> existing = userRepository.findByEmail(finalEmail);
-        User user;
+        // ── Case-insensitive lookup: finds "Sourabhvijaydohare@gmail.com"
+        //    when Google returns "sourabhvijaydohare@gmail.com" ─────────────
+        User user = userRepository.findByEmailIgnoreCase(normalisedEmail).orElse(null);
 
-        if (existing.isPresent()) {
-            // User already exists (may have registered with email/password before)
-            user = existing.get();
-            // Attach OAuth info if not already set
-            if (user.getProvider() == null) {
+        if (user != null) {
+            // ── EXISTING USER — link OAuth, normalise email, keep all data ─
+            log.info("Linking [{}] OAuth to existing account: {}", provider, user.getEmail());
+
+            // Normalise the stored email to lowercase if it wasn't already
+            if (!normalisedEmail.equals(user.getEmail())) {
+                log.info("Normalising email: {} → {}", user.getEmail(), normalisedEmail);
+                user.setEmail(normalisedEmail);
+            }
+
+            // Attach OAuth fields if not set
+            if (user.getProvider() == null || user.getProvider().isBlank()) {
                 user.setProvider(provider);
                 user.setProviderId(providerId);
             }
             if (user.getAvatarUrl() == null && avatarUrl != null) {
                 user.setAvatarUrl(avatarUrl);
             }
-            if (user.getDisplayName() == null && name != null) {
+            // Only update display name if user hasn't set their own
+            if ((user.getDisplayName() == null || user.getDisplayName().isBlank()) && name != null) {
                 user.setDisplayName(name);
             }
 
         } else {
-            // Brand new user via OAuth — create full profile
+            // ── NEW USER via OAuth ─────────────────────────────────────────
+            log.info("Creating new user via [{}] OAuth: {}", provider, normalisedEmail);
             String[] parts = name != null ? name.split(" ", 2) : new String[]{"Trader", ""};
+
             user = User.builder()
-                    .email(finalEmail)
+                    .email(normalisedEmail)
                     .firstName(parts[0])
                     .lastName(parts.length > 1 ? parts[1] : "")
                     .displayName(name)
                     .avatarUrl(avatarUrl)
                     .provider(provider)
                     .providerId(providerId)
-                    .password("")              // no password for OAuth-only users
+                    .password("")              // OAuth-only — no password
                     .role(User.Role.TRADER)
                     .active(true)
                     .strictMode(false)

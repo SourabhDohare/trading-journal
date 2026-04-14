@@ -6,67 +6,105 @@ import com.tradingjournal.exception.BadRequestException;
 import com.tradingjournal.model.User;
 import com.tradingjournal.repository.UserRepository;
 import com.tradingjournal.security.JwtTokenProvider;
-import com.tradingjournal.security.UserPrincipal;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService {
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtTokenProvider tokenProvider;
+    private final UserRepository        userRepository;
+    private final PasswordEncoder       passwordEncoder;
+    private final JwtTokenProvider      tokenProvider;
     private final AuthenticationManager authenticationManager;
 
+    // ── REGISTER ──────────────────────────────────────────────────────────
     public AuthDTO.AuthResponse register(AuthDTO.RegisterRequest request) {
-        if (userRepository.existsByEmail(request.getEmail())) {
-            throw new BadRequestException("Email already registered: " + request.getEmail());
+
+        // Normalise email — prevents duplicate accounts with case differences
+        String email = request.getEmail().toLowerCase().trim();
+
+        if (userRepository.existsByEmailIgnoreCase(email)) {
+            throw new BadRequestException("Email already registered: " + email);
         }
 
         User user = User.builder()
-                .email(request.getEmail())
+                .email(email)                                      // always stored lowercase
                 .password(passwordEncoder.encode(request.getPassword()))
                 .firstName(request.getFirstName())
                 .lastName(request.getLastName())
                 .role(User.Role.TRADER)
                 .active(true)
                 .strictMode(false)
+                .emailNotifications(true)
+                .weeklyReportEmail(true)
                 .timezone("Asia/Kolkata")
                 .build();
 
         user = userRepository.save(user);
-        return buildAuthResponse(user);
+        log.info("New user registered: {}", email);
+        return buildResponse(user);
     }
 
+    // ── LOGIN ─────────────────────────────────────────────────────────────
     public AuthDTO.AuthResponse login(AuthDTO.LoginRequest request) {
-        // Authenticate via email — we load user first to get the ID for JWT
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new BadRequestException("Invalid credentials"));
 
-        Authentication auth = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(user.getId(), request.getPassword())
-        );
+        String email = request.getEmail().toLowerCase().trim();
 
-        return buildAuthResponse(user);
+        // Case-insensitive lookup handles legacy emails like "Sourabhvijaydohare@gmail.com"
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new BadRequestException("Invalid email or password."));
+
+        // ── Block OAuth-only accounts from password login ─────────────────
+        // If account was created via Google/GitHub, password field is "" or null.
+        // BCryptPasswordEncoder.matches("", "") throws IllegalArgumentException → 500.
+        // Give a friendly error instead.
+        if (user.getPassword() == null || user.getPassword().isBlank()) {
+            String provider = user.getProvider();
+            String providerLabel = "google".equalsIgnoreCase(provider) ? "Google"
+                                 : "github".equalsIgnoreCase(provider) ? "GitHub"
+                                 : "social login";
+            throw new BadRequestException(
+                "This account was created with " + providerLabel + ". " +
+                "Please use the 'Continue with " + providerLabel + "' button to sign in.");
+        }
+
+        // ── Verify password ───────────────────────────────────────────────
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(user.getId(), request.getPassword())
+            );
+        } catch (BadCredentialsException e) {
+            throw new BadRequestException("Invalid email or password.");
+        } catch (Exception e) {
+            log.error("Unexpected auth error for {}: {}", email, e.getMessage());
+            throw new BadRequestException("Sign-in failed. Please try again.");
+        }
+
+        log.info("User logged in: {}", email);
+        return buildResponse(user);
     }
 
+    // ── REFRESH TOKEN ─────────────────────────────────────────────────────
     public AuthDTO.AuthResponse refresh(AuthDTO.RefreshRequest request) {
         if (!tokenProvider.validateToken(request.getRefreshToken())) {
-            throw new BadRequestException("Invalid or expired refresh token");
+            throw new BadRequestException("Invalid or expired refresh token.");
         }
         String userId = tokenProvider.getUserIdFromToken(request.getRefreshToken());
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new BadRequestException("User not found"));
-        return buildAuthResponse(user);
+                .orElseThrow(() -> new BadRequestException("User not found."));
+        return buildResponse(user);
     }
 
-    private AuthDTO.AuthResponse buildAuthResponse(User user) {
-        String accessToken = tokenProvider.generateToken(user.getId());
+    // ── Builder ───────────────────────────────────────────────────────────
+    private AuthDTO.AuthResponse buildResponse(User user) {
+        String accessToken  = tokenProvider.generateToken(user.getId());
         String refreshToken = tokenProvider.generateRefreshToken(user.getId());
 
         UserDTO.Response userResp = new UserDTO.Response();
