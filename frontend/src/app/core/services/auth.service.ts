@@ -1,6 +1,5 @@
 // src/app/core/services/auth.service.ts
-// COMPLETE FILE — replaces your existing auth.service.ts
-// Key addition: storeOAuthToken() for OAuth2 callback
+// COMPLETE FILE — fixes storeOAuthToken + removes any payload access
 
 import { Injectable, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
@@ -9,20 +8,20 @@ import { Observable, tap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 
 export interface AuthUser {
-  id:              string;
-  email:           string;
-  role:            string;
-  firstName?:      string;
-  lastName?:       string;
-  fullName?:       string;
-  displayName?:    string;
-  avatarBase64?:   string;
-  avatarUrl?:      string;        // OAuth avatar URL (Google/GitHub)
-  strictMode?:     boolean;
+  id:                  string;
+  email:               string;
+  role:                string;
+  firstName?:          string;
+  lastName?:           string;
+  fullName?:           string;
+  displayName?:        string;
+  avatarBase64?:       string;
+  avatarUrl?:          string;
+  strictMode?:         boolean;
   emailNotifications?: boolean;
   weeklyReportEmail?:  boolean;
-  planType?:       string;
-  provider?:       string;        // "google" | "github" | null
+  planType?:           string;
+  provider?:           string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -30,58 +29,55 @@ export class AuthService {
 
   private readonly TOKEN_KEY = 'tp_token';
   private readonly USER_KEY  = 'tp_user';
-  private readonly API       = environment.apiUrl;
 
-  // ── Reactive state ──────────────────────────────────────────────────────
-  currentUser = signal<AuthUser | null>(this.loadUserFromStorage());
+  currentUser = signal<AuthUser | null>(this.loadUser());
   isLoggedIn  = computed(() => !!this.currentUser() && !!this.getToken());
 
   constructor(private http: HttpClient, private router: Router) {}
 
-  // ── EMAIL / PASSWORD register ───────────────────────────────────────────
+  // ── Email / Password ──────────────────────────────────────────────────
   register(firstName: string, lastName: string, email: string, password: string): Observable<any> {
-    return this.http.post<any>(`${this.API}/auth/register`, {
+    return this.http.post<any>(`${environment.apiUrl}/auth/register`, {
       firstName, lastName, email, password
-    }).pipe(
-      tap(res => this.handleAuthResponse(res))
-    );
+    }).pipe(tap(res => this.store(res)));
   }
 
-  // ── EMAIL / PASSWORD login ──────────────────────────────────────────────
   login(email: string, password: string): Observable<any> {
-    return this.http.post<any>(`${this.API}/auth/login`, { email, password }).pipe(
-      tap(res => this.handleAuthResponse(res))
-    );
+    return this.http.post<any>(`${environment.apiUrl}/auth/login`, {
+      email, password
+    }).pipe(tap(res => this.store(res)));
   }
 
-  // ── OAUTH2 callback — called by OAuthCallbackComponent ─────────────────
-  // After Spring redirects to /auth/callback?token=xxx&email=xxx&name=xxx
+  // ── OAuth2 callback ───────────────────────────────────────────────────
+  // Called by OAuthCallbackComponent after Spring redirects with ?token=xxx
   storeOAuthToken(token: string, email: string, name: string): void {
     if (!token || !token.startsWith('eyJ')) {
-      console.error('Invalid OAuth2 token received');
+      console.error('[AuthService] Invalid token in OAuth callback:', token);
       return;
     }
 
-    // Store JWT
     localStorage.setItem(this.TOKEN_KEY, token);
 
-    // Build a minimal user object — refreshProfileInBackground() hydrates the rest
+    const safeName  = this.decode(name);
+    const safeEmail = this.decode(email).toLowerCase().trim();
+
     const user: AuthUser = {
-      id:          '',
-      email:       decodeURIComponent(email || '').toLowerCase().trim(),
+      id:          '',           // populated by refreshProfile below
+      email:       safeEmail,
       role:        'TRADER',
-      displayName: decodeURIComponent(name || ''),
-      fullName:    decodeURIComponent(name || ''),
+      displayName: safeName,
+      fullName:    safeName,
     };
 
     localStorage.setItem(this.USER_KEY, JSON.stringify(user));
     this.currentUser.set(user);
 
-    // Fetch full profile in background to populate id, strictMode, avatar, etc.
-    this.refreshProfileInBackground();
+    // Fetch full profile from backend in background
+    // Populates id, strictMode, avatar, planType etc.
+    this.refreshProfile();
   }
 
-  // ── Logout ──────────────────────────────────────────────────────────────
+  // ── Logout ────────────────────────────────────────────────────────────
   logout(): void {
     localStorage.removeItem(this.TOKEN_KEY);
     localStorage.removeItem(this.USER_KEY);
@@ -89,80 +85,89 @@ export class AuthService {
     this.router.navigate(['/auth/login']);
   }
 
-  // ── Token access ────────────────────────────────────────────────────────
+  // ── Token ─────────────────────────────────────────────────────────────
   getToken(): string | null {
     const t = localStorage.getItem(this.TOKEN_KEY);
-    // Reject obviously invalid stored values
     if (!t || t === 'undefined' || t === 'null' || !t.startsWith('eyJ')) return null;
     return t;
   }
 
-  // ── Partial local user update (used by ProfileComponent) ───────────────
+  // ── Partial update (ProfileComponent calls this after save) ───────────
   updateLocalUser(partial: Partial<AuthUser>): void {
-    const current = this.currentUser();
-    if (!current) return;
-    const updated = { ...current, ...partial };
+    const cur = this.currentUser();
+    if (!cur) return;
+    const updated = { ...cur, ...partial };
     localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
     this.currentUser.set(updated);
   }
 
-  // ── Private helpers ─────────────────────────────────────────────────────
-
-  private handleAuthResponse(res: any): void {
-    const token = res.accessToken;
-    if (!token) { console.error('No accessToken in response', res); return; }
-
-    localStorage.setItem(this.TOKEN_KEY, token);
-
-    const u = res.user;
-    const user: AuthUser = {
-      id:          u?.id          || '',
-      email:       u?.email       || '',
-      role:        u?.role        || 'TRADER',
-      firstName:   u?.firstName   || '',
-      lastName:    u?.lastName    || '',
-      displayName: u?.displayName || `${u?.firstName || ''} ${u?.lastName || ''}`.trim(),
-      fullName:    `${u?.firstName || ''} ${u?.lastName || ''}`.trim(),
-      strictMode:  u?.strictMode  === true,
-    };
-
-    localStorage.setItem(this.USER_KEY, JSON.stringify(user));
-    this.currentUser.set(user);
-  }
-
-  // Called after OAuth2 login to fetch the full profile (id, avatar, settings)
-  refreshProfileInBackground(): void {
-    this.http.get<any>(`${this.API}/profile`).subscribe({
+  // ── Called by layout / any component that needs fresh profile ─────────
+  refreshProfile(): void {
+    this.http.get<any>(`${environment.apiUrl}/profile`).subscribe({
       next: (p) => {
         const updated: AuthUser = {
-          id:                  p.id          || '',
-          email:               p.email       || '',
-          role:                p.role        || 'TRADER',
-          firstName:           p.fullName?.split(' ')[0] || '',
-          lastName:            p.fullName?.split(' ').slice(1).join(' ') || '',
-          fullName:            p.fullName    || '',
-          displayName:         p.displayName || p.fullName || p.email || '',
-          avatarBase64:        p.avatarBase64 || undefined,
-          avatarUrl:           p.avatarUrl   || undefined,
-          strictMode:          p.strictMode  === true,
+          id:                  p.id            || '',
+          email:               p.email         || '',
+          role:                p.role          || 'TRADER',
+          fullName:            p.fullName       || '',
+          displayName:         p.displayName    || p.fullName || p.email || '',
+          avatarBase64:        p.avatarBase64   || undefined,
+          avatarUrl:           p.avatarUrl      || undefined,
+          strictMode:          p.strictMode     === true,
           emailNotifications:  p.emailNotifications === true,
           weeklyReportEmail:   p.weeklyReportEmail  === true,
-          planType:            p.planType    || 'FREE',
-          provider:            p.provider   || undefined,
+          planType:            p.planType       || 'FREE',
+          provider:            p.provider       || undefined,
         };
         localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
         this.currentUser.set(updated);
       },
-      error: (err) => console.warn('Profile refresh failed', err)
+      error: (err) => {
+        // 401 means token expired — handled by error interceptor
+        console.warn('[AuthService] Profile refresh failed:', err?.status);
+      }
     });
   }
 
-  private loadUserFromStorage(): AuthUser | null {
+  // ── Private ───────────────────────────────────────────────────────────
+
+  private store(res: any): void {
+    const token = res?.accessToken;
+    if (!token || !token.startsWith('eyJ')) {
+      console.error('[AuthService] Invalid accessToken in response:', res);
+      return;
+    }
+    localStorage.setItem(this.TOKEN_KEY, token);
+
+    const u = res.user || {};
+    const user: AuthUser = {
+      id:          u.id          || '',
+      email:       u.email       || '',
+      role:        u.role        || 'TRADER',
+      firstName:   u.firstName   || '',
+      lastName:    u.lastName    || '',
+      fullName:    `${u.firstName || ''} ${u.lastName || ''}`.trim(),
+      displayName: u.displayName || `${u.firstName || ''} ${u.lastName || ''}`.trim(),
+      strictMode:  u.strictMode  === true,
+    };
+    localStorage.setItem(this.USER_KEY, JSON.stringify(user));
+    this.currentUser.set(user);
+  }
+
+  private loadUser(): AuthUser | null {
     try {
       const raw = localStorage.getItem(this.USER_KEY);
-      return raw ? JSON.parse(raw) : null;
+      if (!raw) return null;
+      return JSON.parse(raw) as AuthUser;
     } catch {
       return null;
     }
+  }
+
+  // Safe URL-decode that never throws
+  private decode(s: string): string {
+    if (!s) return '';
+    try { return decodeURIComponent(s); }
+    catch { return s; }
   }
 }
