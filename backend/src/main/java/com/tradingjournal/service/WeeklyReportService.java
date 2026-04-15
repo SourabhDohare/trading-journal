@@ -109,17 +109,17 @@ public class WeeklyReportService {
         }
 
         if (sendEmail) {
-            String filename = "TradePulse_Report_" + from + "_to_" + to + ".pdf";
+            String filename = "MarketSaga_Report_" + from + "_to_" + to + ".pdf";
             try {
                 emailService.sendEmailWithAttachment(
                         user.getEmail(),
-                        "📊 TradePulse Report — " + rangeLabel,
+                        "📊 MarketSaga Report — " + rangeLabel,
                         htmlBody, pdfBytes, filename);
                 log.info("Custom report emailed to {} for range {}", user.getEmail(), rangeLabel);
             } catch (Exception e) {
                 // Fall back to HTML-only
                 emailService.sendHtmlEmail(user.getEmail(),
-                        "📊 TradePulse Report — " + rangeLabel, htmlBody);
+                        "📊 MarketSaga Report — " + rangeLabel, htmlBody);
             }
         }
 
@@ -153,15 +153,15 @@ public class WeeklyReportService {
 
         try {
             byte[] pdf      = buildReportPdf(userName, weekLabel, stats, closed);
-            String filename = "TradePulse_Report_" + weekStart + ".pdf";
+            String filename = "MarketSaga_Report_" + weekStart + ".pdf";
             emailService.sendEmailWithAttachment(
                     user.getEmail(),
-                    "📊 Your TradePulse Weekly Report — " + weekLabel,
+                    "📊 Your MarketSaga Weekly Report — " + weekLabel,
                     htmlBody, pdf, filename);
         } catch (Exception e) {
             log.warn("PDF failed for {}, HTML only: {}", user.getEmail(), e.getMessage());
             emailService.sendHtmlEmail(user.getEmail(),
-                    "📊 Your TradePulse Weekly Report — " + weekLabel, htmlBody);
+                    "📊 Your MarketSaga Weekly Report — " + weekLabel, htmlBody);
         }
     }
 
@@ -170,7 +170,7 @@ public class WeeklyReportService {
         String html = "<!DOCTYPE html><html><body style='font-family:Inter,sans-serif;background:#0a0e1a;color:#e2e8f0;padding:0;margin:0'>"
                 + "<div style='max-width:600px;margin:0 auto;padding:40px 24px'>"
                 + "<div style='text-align:center;margin-bottom:32px'><span style='font-size:32px;font-weight:900;"
-                + "background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent'>TradePulse</span></div>"
+                + "background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent'>MarketSaga</span></div>"
                 + "<div style='background:#0d1117;border:1px solid #1e2433;border-radius:16px;padding:32px'>"
                 + "<h2 style='color:#e2e8f0;margin:0 0 8px'>Hey " + name + " 👋</h2>"
                 + "<p style='color:#64748b;margin:0 0 24px;font-size:14px'>Week: " + weekLabel + "</p>"
@@ -186,7 +186,7 @@ public class WeeklyReportService {
                 + "</div><p style='text-align:center;color:#334155;font-size:12px;margin-top:24px'>"
                 + "<a href='https://trading-journal-plum-gamma.vercel.app/profile' style='color:#475569'>Manage email preferences</a></p>"
                 + "</div></body></html>";
-        emailService.sendHtmlEmail(email, "TradePulse — No trades logged this week", html);
+        emailService.sendHtmlEmail(email, "MarketSaga — No trades logged this week", html);
     }
 
     // ── Stats ─────────────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ public class WeeklyReportService {
         return "<!DOCTYPE html><html><body style='font-family:Inter,sans-serif;background:#0a0e1a;color:#e2e8f0;padding:0;margin:0'>"
                 + "<div style='max-width:680px;margin:0 auto;padding:40px 24px'>"
                 + "<div style='text-align:center;margin-bottom:32px'><span style='font-size:28px;font-weight:900;"
-                + "background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent'>TradePulse</span>"
+                + "background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent'>MarketSaga</span>"
                 + "<p style='color:#475569;font-size:13px;margin:6px 0 0'>Performance Report</p></div>"
                 + "<div style='background:#0d1117;border:1px solid #1e2433;border-radius:16px;padding:32px;margin-bottom:20px'>"
                 + "<h2 style='margin:0 0 4px;font-size:20px'>Hey " + name + " 👋</h2>"
@@ -285,7 +285,7 @@ public class WeeklyReportService {
         Font redFont   = new Font(Font.FontFamily.HELVETICA, 14, Font.BOLD,   new BaseColor(239, 68, 68));
         Font smallGray = new Font(Font.FontFamily.HELVETICA,  9, Font.NORMAL, new BaseColor(71, 85, 105));
 
-        Paragraph title = new Paragraph("TradePulse — Performance Report", titleFont);
+        Paragraph title = new Paragraph("MarketSaga — Performance Report", titleFont);
         title.setAlignment(Element.ALIGN_CENTER);
         doc.add(title);
         Paragraph sub = new Paragraph(name + " · " + rangeLabel, bodyFont);
@@ -337,7 +337,7 @@ public class WeeklyReportService {
         }
         doc.add(table);
 
-        Paragraph footer = new Paragraph("\nGenerated by TradePulse · " + LocalDate.now().format(DATE_FMT)
+        Paragraph footer = new Paragraph("\nGenerated by MarketSaga · " + LocalDate.now().format(DATE_FMT)
                 + " · trading-journal-plum-gamma.vercel.app", smallGray);
         footer.setAlignment(Element.ALIGN_CENTER); footer.setSpacingBefore(20);
         doc.add(footer);

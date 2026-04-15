@@ -1100,7 +1100,7 @@ export class ReportsComponent implements OnInit {
       next: (blob) => {
         this.triggerDownload(
           blob,
-          `TradePulse_Report_${this.fromDate}_to_${this.toDate}.pdf`,
+          `MarketSaga_Report_${this.fromDate}_to_${this.toDate}.pdf`,
         );
         this.generating.set(null);
         this.reportSuccess.set("PDF downloaded successfully ✓");
@@ -1131,7 +1131,7 @@ export class ReportsComponent implements OnInit {
         next: (blob) => {
           this.triggerDownload(
             blob,
-            `TradePulse_Report_${this.fromDate}_to_${this.toDate}.pdf`,
+            `MarketSaga_Report_${this.fromDate}_to_${this.toDate}.pdf`,
           );
           this.generating.set(null);
           this.reportSuccess.set(

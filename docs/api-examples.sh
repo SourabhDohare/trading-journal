@@ -1,4 +1,4 @@
-# TradePulse API — Example Requests
+# MarketSaga API — Example Requests
 # Base URL: http://localhost:8080/api/v1
 
 # ─── 1. Register ──────────────────────────────────────────────────────────────

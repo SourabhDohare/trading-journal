@@ -17,7 +17,7 @@ import { environment } from '../../../environments/environment';
 
         <div class="brand">
           <span class="brand-icon">◈</span>
-          <span class="brand-name">TradePulse</span>
+          <span class="brand-name">MarketSaga</span>
         </div>
 
         <!-- Step 1: Enter OTP -->

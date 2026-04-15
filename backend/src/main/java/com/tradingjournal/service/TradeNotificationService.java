@@ -152,7 +152,7 @@ public class TradeNotificationService {
                 + "color:#e2e8f0;padding:0;margin:0'><div style='max-width:600px;margin:0 auto;padding:40px 24px'>"
                 + "<div style='text-align:center;margin-bottom:32px'>"
                 + "<span style='font-size:26px;font-weight:900;background:linear-gradient(135deg,#3b82f6,#8b5cf6);"
-                + "-webkit-background-clip:text;-webkit-text-fill-color:transparent'>TradePulse</span></div>"
+                + "-webkit-background-clip:text;-webkit-text-fill-color:transparent'>MarketSaga</span></div>"
                 + "<div style='background:#0d1117;border:1px solid #1e2433;border-radius:16px;padding:28px'>"
                 + body + "</div></div></body></html>";
     }

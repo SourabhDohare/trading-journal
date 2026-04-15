@@ -1,6 +1,6 @@
-# TradePulse — AI-Powered Trading Journal
+# MarketSaga — AI-Powered Trading Journal
 
-## Try it : https://trading-journal-plum-gamma.vercel.app/
+## Try it : https://www.marketsaga.site/
 
 A full-stack, enterprise-grade Trading Journal application built with **Spring Boot 3**, **Angular 17**, and **MongoDB Atlas**.
 

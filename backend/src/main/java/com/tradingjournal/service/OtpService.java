@@ -27,14 +27,14 @@ public class OtpService {
 
     public void sendEmailVerificationOtp(String email) {
         send(email, Otp.OtpType.EMAIL_VERIFICATION,
-                "TradePulse — Verify your email",
-                "verify your TradePulse account");
+                "MarketSaga — Verify your email",
+                "verify your MarketSaga account");
     }
 
     public void sendPasswordResetOtp(String email) {
         send(email, Otp.OtpType.PASSWORD_RESET,
-                "TradePulse — Reset your password",
-                "reset your TradePulse password");
+                "MarketSaga — Reset your password",
+                "reset your MarketSaga password");
     }
 
     // ── Verify ────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ public class OtpService {
                 + "<span style='font-size:28px;font-weight:900;"
                 + "background:linear-gradient(135deg,#3b82f6,#8b5cf6);"
                 + "-webkit-background-clip:text;-webkit-text-fill-color:transparent'>"
-                + "TradePulse</span></div>"
+                + "MarketSaga</span></div>"
                 + "<div style='background:#0d1117;border:1px solid #1e2433;"
                 + "border-radius:16px;padding:40px 36px;text-align:center'>"
                 + "<div style='font-size:40px;margin-bottom:16px'>🔐</div>"
@@ -152,13 +152,13 @@ public class OtpService {
                 + "<div style='background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;"
                 + "border-radius:0 8px 8px 0;padding:12px 16px;text-align:left;margin-bottom:20px'>"
                 + "<p style='color:#fbbf24;margin:0;font-size:13px;line-height:1.6'>"
-                + "<strong>Security:</strong> Never share this code. TradePulse will never ask "
+                + "<strong>Security:</strong> Never share this code. MarketSaga will never ask "
                 + "for your OTP. This code expires in 10 minutes.</p></div>"
                 + "<p style='color:#334155;font-size:12px;margin:0'>"
                 + "Didn't request this? You can safely ignore this email.</p>"
                 + "</div>"
                 + "<p style='text-align:center;color:#1e2433;font-size:12px;margin-top:24px'>"
-                + "Sent from noreply@marketsaga.site · TradePulse</p>"
+                + "Sent from noreply@marketsaga.site · MarketSaga</p>"
                 + "</div></body></html>";
     }
 }

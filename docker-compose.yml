@@ -6,7 +6,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: tradepulse-api
+    container_name: MarketSaga-api
     ports:
       - "8080:8080"
     environment:
@@ -28,7 +28,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: tradepulse-ui
+    container_name: MarketSaga-ui
     ports:
       - "80:80"
     depends_on:

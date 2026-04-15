@@ -82,7 +82,7 @@ public class ReportController {
         byte[] pdf = weeklyReportService.generateCustomReport(
                 principal.getId(), from, to, false);
 
-        String filename = "TradePulse_Report_" + from + "_to_" + to + ".pdf";
+        String filename = "MarketSaga_Report_" + from + "_to_" + to + ".pdf";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(MediaType.APPLICATION_PDF)
@@ -104,7 +104,7 @@ public class ReportController {
         byte[] pdf = weeklyReportService.generateCustomReport(
                 principal.getId(), from, to, true);
 
-        String filename = "TradePulse_Report_" + from + "_to_" + to + ".pdf";
+        String filename = "MarketSaga_Report_" + from + "_to_" + to + ".pdf";
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
                 .contentType(MediaType.APPLICATION_PDF)

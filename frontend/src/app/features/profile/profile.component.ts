@@ -403,7 +403,7 @@ interface UserProfile {
           <div class="card">
             <h3 class="card-title">Goals & Self-Assessment</h3>
             <p class="card-desc">
-              This helps TradePulse give you better personalised insights.
+              This helps MarketSaga give you better personalised insights.
             </p>
             <div class="form-grid">
               <div class="fg full-width">

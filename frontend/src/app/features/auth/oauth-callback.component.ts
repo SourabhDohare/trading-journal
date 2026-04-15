@@ -17,7 +17,7 @@ import { AuthService } from '../../core/services/auth.service';
 
         <div class="brand">
           <span class="icon">◈</span>
-          <span class="name">TradePulse</span>
+          <span class="name">MarketSaga</span>
         </div>
 
         <ng-container *ngIf="!error">

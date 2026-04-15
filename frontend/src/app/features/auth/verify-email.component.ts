@@ -18,7 +18,7 @@ import { AuthService } from '../../core/services/auth.service';
 
         <div class="brand">
           <span class="brand-icon">◈</span>
-          <span class="brand-name">TradePulse</span>
+          <span class="brand-name">MarketSaga</span>
         </div>
 
         <!-- Icon + title -->
@@ -241,7 +241,7 @@ export class VerifyEmailComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: (res) => {
         this.loading.set(false);
-        this.success.set('Email verified! Welcome to TradePulse 🎉');
+        this.success.set('Email verified! Welcome to MarketSaga 🎉');
         // Store JWT and navigate
         this.authService.storeOAuthToken(res.accessToken, this.email,
           res.user?.displayName || res.user?.firstName || '');
