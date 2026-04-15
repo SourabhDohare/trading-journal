@@ -1,14 +1,9 @@
 // src/app/features/auth/login.component.ts
-// FIX: use environment.apiUrl (which has /api/v1) for OAuth2 URLs
-// Old (WRONG): `${environment.backendUrl}/oauth2/authorization/google`
-//              → https://render.com/oauth2/...  404 — missing /api/v1
-// New (RIGHT): `${environment.apiUrl}/oauth2/authorization/google`
-//              → https://render.com/api/v1/oauth2/... ✓
-
 import { Component, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { RouterLink, Router } from "@angular/router";
+import { HttpClient } from "@angular/common/http";
 import { AuthService } from "../../core/services/auth.service";
 import { environment } from "../../../environments/environment";
 
@@ -188,7 +183,6 @@ import { environment } from "../../../environments/environment";
       }
       .google-btn:hover {
         background: #f9fafb;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
       }
       .github-btn {
         background: #24292e;
@@ -300,7 +294,6 @@ import { environment } from "../../../environments/environment";
         cursor: pointer;
         margin-top: 16px;
         transition: all 0.15s;
-        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
       }
       .btn-primary:hover:not(:disabled) {
         transform: translateY(-1px);
@@ -341,12 +334,11 @@ export class LoginComponent {
   error = signal("");
   showPw = signal(false);
 
-  // FIX: use apiUrl (has /api/v1) not backendUrl (no /api/v1)
-  // Spring Security registers OAuth2 UNDER the context-path /api/v1
   readonly googleUrl = `${environment.apiUrl}/oauth2/authorization/google`;
   readonly githubUrl = `${environment.apiUrl}/oauth2/authorization/github`;
 
   constructor(
+    private http: HttpClient,
     private authService: AuthService,
     private router: Router,
   ) {}
@@ -357,30 +349,45 @@ export class LoginComponent {
 
   login() {
     if (!this.email.trim() || !this.password) {
-      this.error.set('Please enter email and password.'); return;
+      this.error.set("Please enter your email and password.");
+      return;
     }
     this.loading.set(true);
-    this.error.set('');
+    this.error.set("");
 
-    this.authService.login(this.email.trim(), this.password).subscribe({
-      next: () => { this.loading.set(false); this.router.navigate(['/dashboard'], { replaceUrl: true }); },
-      error: (err) => {
-        this.loading.set(false);
-        const msg = err?.error?.message || '';
+    // Call backend directly so we can inspect the raw error message
+    this.http
+      .post<any>(`${environment.apiUrl}/auth/login`, {
+        email: this.email.trim().toLowerCase(),
+        password: this.password,
+      })
+      .subscribe({
+        next: (res: any) => {
+          this.loading.set(false);
+          // Store JWT via auth service
+          this.authService.storeOAuthToken(
+            res.accessToken,
+            res.user?.email || this.email,
+            res.user?.displayName || res.user?.firstName || "",
+          );
+          this.router.navigate(["/dashboard"], { replaceUrl: true });
+        },
+        error: (err: any) => {
+          this.loading.set(false);
+          const msg: string = err?.error?.message || "";
 
-        // Backend sends "EMAIL_NOT_VERIFIED:email@example.com"
-        // when user hasn't verified their email yet
-        if (msg.startsWith('EMAIL_NOT_VERIFIED:')) {
-          const unverifiedEmail = msg.split(':')[1] || this.email.trim().toLowerCase();
-          this.router.navigate(['/auth/verify-email'], {
-            queryParams: { email: unverifiedEmail }
-          });
-          return;
-        }
+          // Backend sends "EMAIL_NOT_VERIFIED:email" for unverified accounts
+          if (msg.startsWith("EMAIL_NOT_VERIFIED:")) {
+            const unverifiedEmail =
+              msg.split(":")[1] || this.email.trim().toLowerCase();
+            this.router.navigate(["/auth/verify-email"], {
+              queryParams: { email: unverifiedEmail },
+            });
+            return;
+          }
 
-        this.error.set(msg || 'Invalid email or password.');
-      }
-    });
+          this.error.set(msg || "Invalid email or password.");
+        },
+      });
   }
-
 }

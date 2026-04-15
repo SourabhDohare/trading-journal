@@ -1,11 +1,9 @@
 // src/app/features/auth/register.component.ts
-// FIX: same URL fix as login — use apiUrl (has /api/v1)
-
 import { Component, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { RouterLink, Router } from "@angular/router";
-import { AuthService } from "../../core/services/auth.service";
+import { HttpClient } from "@angular/common/http";
 import { environment } from "../../../environments/environment";
 
 @Component({
@@ -23,6 +21,7 @@ import { environment } from "../../../environments/environment";
         <h1 class="auth-title">Create account</h1>
         <p class="auth-sub">Start building your trading edge today.</p>
 
+        <!-- OAuth providers -->
         <div class="oauth-stack">
           <a [href]="googleUrl" class="oauth-btn google-btn">
             <svg width="18" height="18" viewBox="0 0 24 24">
@@ -410,12 +409,13 @@ export class RegisterComponent {
   loading = signal(false);
   error = signal("");
 
-  // FIX: use apiUrl (has /api/v1) not backendUrl
+  // FIX: use apiUrl (has /api/v1)
   readonly googleUrl = `${environment.apiUrl}/oauth2/authorization/google`;
   readonly githubUrl = `${environment.apiUrl}/oauth2/authorization/github`;
 
+  // FIX: inject HttpClient directly — needed for OTP register flow
   constructor(
-    private authService: AuthService,
+    private http: HttpClient,
     private router: Router,
   ) {}
 
@@ -453,32 +453,40 @@ export class RegisterComponent {
 
   register() {
     if (!this.firstName.trim() || !this.email.trim() || !this.password) {
-      this.error.set('First name, email and password are required.'); return;
+      this.error.set("First name, email and password are required.");
+      return;
     }
     if (this.password.length < 8) {
-      this.error.set('Password must be at least 8 characters.'); return;
+      this.error.set("Password must be at least 8 characters.");
+      return;
     }
     this.loading.set(true);
-    this.error.set('');
+    this.error.set("");
 
-    this.http.post<any>(`${environment.apiUrl}/auth/register`, {
-      firstName: this.firstName.trim(),
-      lastName:  this.lastName.trim(),
-      email:     this.email.trim().toLowerCase(),
-      password:  this.password
-    }).subscribe({
-      next: (res) => {
-        this.loading.set(false);
-        // ← NEW: go to OTP verification, not dashboard
-        this.router.navigate(['/auth/verify-email'], {
-          queryParams: { email: this.email.trim().toLowerCase() }
-        });
-      },
-      error: (err) => {
-        this.loading.set(false);
-        this.error.set(err?.error?.message || 'Registration failed. Please try again.');
-      }
-    });
+    const email = this.email.trim().toLowerCase();
+
+    // FIX: explicit 'any' type on callbacks for strict TS
+    this.http
+      .post<any>(`${environment.apiUrl}/auth/register`, {
+        firstName: this.firstName.trim(),
+        lastName: this.lastName.trim(),
+        email,
+        password: this.password,
+      })
+      .subscribe({
+        next: (_res: any) => {
+          this.loading.set(false);
+          // Redirect to OTP verification — backend sent OTP to email
+          this.router.navigate(["/auth/verify-email"], {
+            queryParams: { email },
+          });
+        },
+        error: (err: any) => {
+          this.loading.set(false);
+          this.error.set(
+            err?.error?.message || "Registration failed. Please try again.",
+          );
+        },
+      });
   }
-
 }
