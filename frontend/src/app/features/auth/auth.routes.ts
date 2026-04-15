@@ -19,5 +19,22 @@ export const authRoutes: Routes = [
     path: 'callback',
     loadComponent: () =>
       import('./oauth-callback.component').then(m => m.OAuthCallbackComponent)
+  },
+  // ── NEW OTP routes ──────────────────────────────────
+  {
+    path: 'verify-email',
+    loadComponent: () =>
+      import('./verify-email.component').then(m => m.VerifyEmailComponent)
+  },
+  {
+    path: 'forgot-password',
+    loadComponent: () =>
+      import('./forgot-password.component').then(m => m.ForgotPasswordComponent)
+  },
+  {
+    path: 'reset-password',
+    loadComponent: () =>
+      import('./reset-password.component').then(m => m.ResetPasswordComponent)
   }
+
 ];

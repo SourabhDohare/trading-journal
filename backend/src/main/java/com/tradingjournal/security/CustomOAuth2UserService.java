@@ -71,6 +71,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
         if (user != null) {
             // ── EXISTING USER — link OAuth, normalise email, keep all data ─
+            user.setEmailVerified(true);
             log.info("Linking [{}] OAuth to existing account: {}", provider, user.getEmail());
 
             // Normalise the stored email to lowercase if it wasn't already
@@ -98,6 +99,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
             String[] parts = name != null ? name.split(" ", 2) : new String[]{"Trader", ""};
 
             user = User.builder()
+                    .emailVerified(true)
                     .email(normalisedEmail)
                     .firstName(parts[0])
                     .lastName(parts.length > 1 ? parts[1] : "")

@@ -357,20 +357,30 @@ export class LoginComponent {
 
   login() {
     if (!this.email.trim() || !this.password) {
-      this.error.set("Please enter email and password.");
-      return;
+      this.error.set('Please enter email and password.'); return;
     }
     this.loading.set(true);
-    this.error.set("");
+    this.error.set('');
+
     this.authService.login(this.email.trim(), this.password).subscribe({
-      next: () => {
-        this.loading.set(false);
-        this.router.navigate(["/dashboard"], { replaceUrl: true });
-      },
+      next: () => { this.loading.set(false); this.router.navigate(['/dashboard'], { replaceUrl: true }); },
       error: (err) => {
         this.loading.set(false);
-        this.error.set(err?.error?.message || "Invalid email or password.");
-      },
+        const msg = err?.error?.message || '';
+
+        // Backend sends "EMAIL_NOT_VERIFIED:email@example.com"
+        // when user hasn't verified their email yet
+        if (msg.startsWith('EMAIL_NOT_VERIFIED:')) {
+          const unverifiedEmail = msg.split(':')[1] || this.email.trim().toLowerCase();
+          this.router.navigate(['/auth/verify-email'], {
+            queryParams: { email: unverifiedEmail }
+          });
+          return;
+        }
+
+        this.error.set(msg || 'Invalid email or password.');
+      }
     });
   }
+
 }

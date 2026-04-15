@@ -453,31 +453,32 @@ export class RegisterComponent {
 
   register() {
     if (!this.firstName.trim() || !this.email.trim() || !this.password) {
-      this.error.set("First name, email and password are required.");
-      return;
+      this.error.set('First name, email and password are required.'); return;
     }
     if (this.password.length < 8) {
-      this.error.set("Password must be at least 8 characters.");
-      return;
+      this.error.set('Password must be at least 8 characters.'); return;
     }
     this.loading.set(true);
-    this.error.set("");
-    this.authService
-      .register(
-        this.firstName.trim(),
-        this.lastName.trim(),
-        this.email.trim().toLowerCase(),
-        this.password,
-      )
-      .subscribe({
-        next: () => {
-          this.loading.set(false);
-          this.router.navigateByUrl("/dashboard", { replaceUrl: true });
-        },
-        error: (err) => {
-          this.loading.set(false);
-          this.error.set(err?.error?.message || "Registration failed.");
-        },
-      });
+    this.error.set('');
+
+    this.http.post<any>(`${environment.apiUrl}/auth/register`, {
+      firstName: this.firstName.trim(),
+      lastName:  this.lastName.trim(),
+      email:     this.email.trim().toLowerCase(),
+      password:  this.password
+    }).subscribe({
+      next: (res) => {
+        this.loading.set(false);
+        // ← NEW: go to OTP verification, not dashboard
+        this.router.navigate(['/auth/verify-email'], {
+          queryParams: { email: this.email.trim().toLowerCase() }
+        });
+      },
+      error: (err) => {
+        this.loading.set(false);
+        this.error.set(err?.error?.message || 'Registration failed. Please try again.');
+      }
+    });
   }
+
 }

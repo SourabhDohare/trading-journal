@@ -25,6 +25,8 @@ public class User {
     private String providerId;
     private String avatarUrl;
 
+    private boolean emailVerified;
+    
     // ─── Auth (KEPT EXACTLY as original — DO NOT rename) ──────────────────
     @Indexed(unique = true)
     private String email;
