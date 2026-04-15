@@ -21,114 +21,89 @@ public class User {
     @Id
     private String id;
 
-    private String provider; // "google" | "github" | null
+    // ─── OAuth2 ────────────────────────────────────────────────────────────
+    private String provider;    // "google" | "github" | null
     private String providerId;
     private String avatarUrl;
 
-    private boolean emailVerified;
-    
-    // ─── Auth (KEPT EXACTLY as original — DO NOT rename) ──────────────────
+    // ── Email verification ─────────────────────────────────────────────────
+    // FIX: @Builder.Default ensures new Builder() calls start with false
+    // Without this, Lombok Builder ignores the field initialiser
+    @Builder.Default
+    private boolean emailVerified = false;
+
+    // ─── Auth ──────────────────────────────────────────────────────────────
     @Indexed(unique = true)
     private String email;
+    private String password;    // UserPrincipal calls getPassword() — keep as "password"
+    private Role   role;
 
-    // UserPrincipal.java calls user.getPassword() — field MUST stay as "password"
-    private String password;
-
-    private Role role;
-
-    // ─── Original name fields (AuthService calls getFirstName/getLastName) ─
+    // ─── Name ──────────────────────────────────────────────────────────────
     private String firstName;
     private String lastName;
-    private String timezone; // AuthService references this
+    private String timezone;
+    private String fullName;
+    private String displayName;
 
-    // ─── NEW: unified full name for display (profile page uses this) ────────
-    private String fullName; // e.g. "Sourabh Dohare"
-    private String displayName; // e.g. "SD" — shown in sidebar
-
-    // ─── NEW: Contact ──────────────────────────────────────────────────────
+    // ─── Contact ───────────────────────────────────────────────────────────
     private String phone;
     private String city;
     private String country;
-    private String avatarBase64; // Base64 profile picture (max ~200KB)
+    private String avatarBase64;
 
-    // ─── NEW: Trading Identity ─────────────────────────────────────────────
+    // ─── Trading Identity ──────────────────────────────────────────────────
     private ExperienceLevel experienceLevel;
-    private TradingStyle primaryStyle;
-    private List<String> marketsTraded;
-    private List<String> platformsUsed;
-    private String primaryBroker;
+    private TradingStyle    primaryStyle;
+    private List<String>    marketsTraded;
+    private List<String>    platformsUsed;
+    private String          primaryBroker;
 
-    // ─── NEW: Capital & Risk ───────────────────────────────────────────────
+    // ─── Capital & Risk ────────────────────────────────────────────────────
     private BigDecimal tradingCapital;
     private BigDecimal riskPerTradePercent;
     private BigDecimal maxDrawdownTolerance;
     private BigDecimal targetMonthlyReturnPct;
-    private Integer avgTradesPerMonth;
+    private Integer    avgTradesPerMonth;
 
-    // ─── NEW: Goals ────────────────────────────────────────────────────────
+    // ─── Goals ────────────────────────────────────────────────────────────
     private String tradingGoal;
     private String biggestWeakness;
     private String whyImproving;
 
-    // ─── NEW: Preferences ─────────────────────────────────────────────────
-    private boolean emailNotifications;
-    private boolean weeklyReportEmail;
+    // ─── Preferences ──────────────────────────────────────────────────────
+    // FIX: @Builder.Default = true so new users get notifications ON by default
+    // Without @Builder.Default, builder ignores the field initialiser → false
+    @Builder.Default private boolean emailNotifications = true;
+    @Builder.Default private boolean weeklyReportEmail  = true;
 
-    // ─── Original config (AuthService calls getTradingConfig()) ───────────
+    // ─── Config ────────────────────────────────────────────────────────────
     private TradingConfig tradingConfig;
+    @Builder.Default private boolean strictMode = false;
 
-    // strictMode lives in TradingConfig AND directly (used by TradeService)
-    private boolean strictMode;
-
-    // ─── Account status ────────────────────────────────────────────────────
+    // ─── Account ───────────────────────────────────────────────────────────
     private PlanType planType;
-    private boolean active;
+    @Builder.Default private boolean active = true;
 
-    @CreatedDate
-    private LocalDateTime createdAt;
+    @CreatedDate      private LocalDateTime createdAt;
+    @LastModifiedDate private LocalDateTime updatedAt;
 
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
+    // ── Enums ─────────────────────────────────────────────────────────────
+    public enum Role { TRADER, MANAGER, ADMIN }
+    public enum ExperienceLevel { BEGINNER, INTERMEDIATE, ADVANCED, PROFESSIONAL }
+    public enum TradingStyle { INTRADAY, SWING, POSITIONAL, ALL }
+    public enum PlanType { FREE, PRO, ENTERPRISE }
 
-    // ══════════════════════════════════════════════════════════════
-    // Enums
-    // ══════════════════════════════════════════════════════════════
-
-    public enum Role {
-        TRADER, MANAGER, ADMIN
-    }
-
-    public enum ExperienceLevel {
-        BEGINNER, INTERMEDIATE, ADVANCED, PROFESSIONAL
-    }
-
-    public enum TradingStyle {
-        INTRADAY, SWING, POSITIONAL, ALL
-    }
-
-    public enum PlanType {
-        FREE, PRO, ENTERPRISE
-    }
-
-    // ─── TradingConfig (kept for backward compat — AuthService uses it) ────
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
+    @Data @NoArgsConstructor @AllArgsConstructor @Builder
     public static class TradingConfig {
-        private boolean strictMode;
+        private boolean    strictMode;
         private BigDecimal defaultRiskPercent;
         private BigDecimal capitalDeployed;
     }
 
-    // ─── Helper: get effective display name ───────────────────────────────
-    // Used in places that need a user-facing name
     public String getEffectiveDisplayName() {
-        if (displayName != null && !displayName.isBlank())
-            return displayName;
-        if (fullName != null && !fullName.isBlank())
-            return fullName;
-        if (firstName != null && !firstName.isBlank())
+        if (displayName != null && !displayName.isBlank()) return displayName;
+        if (fullName    != null && !fullName.isBlank())    return fullName;
+        if (firstName   != null && !firstName.isBlank())
             return firstName + (lastName != null ? " " + lastName : "");
         return email;
     }
