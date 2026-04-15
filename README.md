@@ -1,5 +1,7 @@
 # TradePulse — AI-Powered Trading Journal
 
+## Try it : https://trading-journal-plum-gamma.vercel.app/
+
 A full-stack, enterprise-grade Trading Journal application built with **Spring Boot 3**, **Angular 17**, and **MongoDB Atlas**.
 
 ---
