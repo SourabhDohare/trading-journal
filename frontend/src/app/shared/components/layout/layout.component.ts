@@ -21,7 +21,7 @@ interface NavItem {
           <div class="logo">
             <span class="logo-icon">◈</span>
             <span class="logo-text" *ngIf="!sidebarCollapsed()"
-              >TradePulse</span
+              >MarketSaga</span
             >
           </div>
           <button class="collapse-btn" (click)="toggleSidebar()">

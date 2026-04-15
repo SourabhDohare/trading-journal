@@ -29,7 +29,8 @@ public class TradeNotificationService {
     private final EmailService   emailService;
 
     private static final DateTimeFormatter FMT     = DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm");
-    private static final String            APP_URL = "https://trading-journal-plum-gamma.vercel.app";
+    private static final String            APP_URL = "https://marketsaga.site";
+
 
     // ── 1. New trade logged ───────────────────────────────────────────────────
     @Async

@@ -16,7 +16,7 @@ import { environment } from "../../../environments/environment";
       <div class="auth-card">
         <div class="brand">
           <span class="brand-icon">◈</span>
-          <span class="brand-name">TradePulse</span>
+          <span class="brand-name">MarketSaga</span>
         </div>
 
         <h1 class="auth-title">Sign in</h1>
