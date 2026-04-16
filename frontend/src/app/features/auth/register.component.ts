@@ -59,7 +59,7 @@ import { AuthLogoComponent } from "../../shared/components/auth-logo/auth-logo.c
               <label>First Name</label>
               <input
                 [(ngModel)]="firstName"
-                placeholder="Sourabh"
+                placeholder="Enter your first name"
                 class="field-input"
                 autocomplete="given-name"
               />
@@ -68,7 +68,7 @@ import { AuthLogoComponent } from "../../shared/components/auth-logo/auth-logo.c
               <label>Last Name</label>
               <input
                 [(ngModel)]="lastName"
-                placeholder="Dohare"
+                placeholder="Enter your last name"
                 class="field-input"
                 autocomplete="family-name"
               />
