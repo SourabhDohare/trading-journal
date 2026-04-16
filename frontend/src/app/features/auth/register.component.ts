@@ -13,10 +13,7 @@ import { environment } from "../../../environments/environment";
   template: `
     <div class="auth-shell">
       <div class="auth-card">
-        <div class="brand">
-          <span class="brand-icon">◈</span>
-          <span class="brand-name">MarketSaga</span>
-        </div>
+        <app-auth-logo/>
 
         <h1 class="auth-title">Create account</h1>
         <p class="auth-sub">Start building your trading edge today.</p>

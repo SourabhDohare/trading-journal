@@ -15,10 +15,7 @@ import { AuthService } from '../../core/services/auth.service';
     <div class="shell">
       <div class="card">
 
-        <div class="brand">
-          <span class="icon">◈</span>
-          <span class="name">MarketSaga</span>
-        </div>
+        <app-auth-logo/>
 
         <ng-container *ngIf="!error">
           <div class="spinner"></div>

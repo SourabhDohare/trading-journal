@@ -26,21 +26,21 @@ public class OtpService {
     // ── Public API ────────────────────────────────────────────────────────
 
     public void sendEmailVerificationOtp(String email) {
-        send(email, Otp.OtpType.EMAIL_VERIFICATION,
-                "MarketSaga — Verify your email",
-                "verify your MarketSaga account");
+        generateAndSend(email, Otp.OtpType.EMAIL_VERIFICATION,
+                "Market Saga — Verify your email",
+                "verify your Market Saga account");
     }
 
     public void sendPasswordResetOtp(String email) {
-        send(email, Otp.OtpType.PASSWORD_RESET,
-                "MarketSaga — Reset your password",
-                "reset your MarketSaga password");
+        generateAndSend(email, Otp.OtpType.PASSWORD_RESET,
+                "Market Saga — Reset your password",
+                "reset your Market Saga password");
     }
 
     // ── Verify ────────────────────────────────────────────────────────────
 
     public void verifyOtp(String email, String code, Otp.OtpType type) {
-        String normEmail = email.toLowerCase().trim();
+        String normEmail = normalize(email);
 
         Otp otp = otpRepository
                 .findTopByEmailAndTypeAndUsedFalseOrderByCreatedAtDesc(normEmail, type)
@@ -54,16 +54,14 @@ public class OtpService {
 
         if (otp.getAttempts() >= MAX_ATTEMPTS) {
             otpRepository.deleteAllByEmailAndType(normEmail, type);
-            throw new BadRequestException(
-                    "Too many incorrect attempts. Please request a new OTP.");
+            throw new BadRequestException("Too many incorrect attempts. Please request a new OTP.");
         }
 
         if (!otp.getCode().equals(code.trim())) {
             otp.setAttempts(otp.getAttempts() + 1);
             otpRepository.save(otp);
             int remaining = MAX_ATTEMPTS - otp.getAttempts();
-            throw new BadRequestException(
-                    "Incorrect OTP. " + remaining + " attempt(s) remaining.");
+            throw new BadRequestException("Incorrect OTP. " + remaining + " attempt(s) remaining.");
         }
 
         otp.setUsed(true);
@@ -73,11 +71,11 @@ public class OtpService {
 
     // ── Private ───────────────────────────────────────────────────────────
 
-    private void send(String email, Otp.OtpType type,
-                      String subject, String actionLabel) {
-        String normEmail = email.toLowerCase().trim();
+    private void generateAndSend(String email, Otp.OtpType type,
+                                  String subject, String actionLabel) {
+        String normEmail = normalize(email);
 
-        // 60-second cooldown
+        // Rate limit — 60 second cooldown
         otpRepository
                 .findTopByEmailAndTypeAndUsedFalseOrderByCreatedAtDesc(normEmail, type)
                 .ifPresent(existing -> {
@@ -104,18 +102,12 @@ public class OtpService {
         otpRepository.save(otp);
         log.info("OTP generated [{}] for: {} (expires {}min)", type, normEmail, OTP_EXPIRY_MINUTES);
 
-        // FIX: use sendHtmlEmailSync() not sendHtmlEmail()
-        // sendHtmlEmail() is @Async — exceptions are silently swallowed
-        // sendHtmlEmailSync() lets us catch the error and log the OTP code for debugging
         try {
             emailService.sendHtmlEmailSync(normEmail, subject, buildEmailHtml(code, actionLabel));
-            log.info("OTP email delivered to: {}", normEmail);
+            log.info("OTP email sent to: {}", normEmail);
         } catch (Exception e) {
-            // Domain is verified — this should not fail in production
-            // But if it does, log the OTP so you can check Render logs
-            log.warn("⚠ OTP email FAILED for {} — Error: {}", normEmail, e.getMessage());
+            log.warn("⚠ OTP email FAILED for {} — {}", normEmail, e.getMessage());
             log.warn("⚠ OTP for manual testing: {} (expires {}min)", code, OTP_EXPIRY_MINUTES);
-            // Don't rethrow — OTP is saved, user can still verify
         }
     }
 
@@ -123,42 +115,97 @@ public class OtpService {
         return String.valueOf(RANDOM.nextInt(900000) + 100000);
     }
 
+    private String normalize(String email) {
+        return email == null ? "" : email.toLowerCase().trim();
+    }
+
+    // ── Email HTML — Market Saga branded ─────────────────────────────────
+
     private String buildEmailHtml(String code, String actionLabel) {
+        // Individual digit boxes
         String digits = code.chars()
-                .mapToObj(c -> "<span style='display:inline-block;width:44px;height:56px;"
-                        + "line-height:56px;text-align:center;background:#111827;"
-                        + "border:1px solid #1e2433;border-radius:10px;"
-                        + "font-size:28px;font-weight:800;color:#e2e8f0;"
-                        + "margin:0 4px;font-family:monospace'>"
-                        + (char) c + "</span>")
+                .mapToObj(c ->
+                    "<td style='padding:0 4px'>"
+                    + "<div style='width:44px;height:56px;line-height:56px;text-align:center;"
+                    + "background:#111827;border:1px solid #1e3a4a;border-radius:10px;"
+                    + "font-size:28px;font-weight:900;color:#5EEAD4;font-family:monospace;"
+                    + "display:inline-block'>" + (char) c + "</div></td>")
                 .reduce("", String::concat);
 
-        return "<!DOCTYPE html><html><body style='font-family:Inter,sans-serif;"
-                + "background:#0a0e1a;color:#e2e8f0;padding:0;margin:0'>"
-                + "<div style='max-width:520px;margin:0 auto;padding:48px 24px'>"
-                + "<div style='text-align:center;margin-bottom:32px'>"
-                + "<span style='font-size:28px;font-weight:900;"
-                + "background:linear-gradient(135deg,#3b82f6,#8b5cf6);"
-                + "-webkit-background-clip:text;-webkit-text-fill-color:transparent'>"
-                + "MarketSaga</span></div>"
-                + "<div style='background:#0d1117;border:1px solid #1e2433;"
-                + "border-radius:16px;padding:40px 36px;text-align:center'>"
-                + "<div style='font-size:40px;margin-bottom:16px'>🔐</div>"
-                + "<h2 style='margin:0 0 8px;font-size:22px;color:#e2e8f0'>Verification Code</h2>"
-                + "<p style='color:#64748b;font-size:14px;margin:0 0 32px;line-height:1.6'>"
-                + "Use this 6-digit code to " + actionLabel + ".<br>"
-                + "Valid for <strong style='color:#94a3b8'>10 minutes</strong>.</p>"
-                + "<div style='margin:0 0 28px'>" + digits + "</div>"
-                + "<div style='background:rgba(245,158,11,.08);border-left:3px solid #f59e0b;"
-                + "border-radius:0 8px 8px 0;padding:12px 16px;text-align:left;margin-bottom:20px'>"
-                + "<p style='color:#fbbf24;margin:0;font-size:13px;line-height:1.6'>"
-                + "<strong>Security:</strong> Never share this code. MarketSaga will never ask "
-                + "for your OTP. This code expires in 10 minutes.</p></div>"
-                + "<p style='color:#334155;font-size:12px;margin:0'>"
-                + "Didn't request this? You can safely ignore this email.</p>"
-                + "</div>"
-                + "<p style='text-align:center;color:#1e2433;font-size:12px;margin-top:24px'>"
-                + "Sent from noreply@marketsaga.site · MarketSaga</p>"
-                + "</div></body></html>";
+        // Shield SVG as base64-safe inline SVG in email
+        String shieldSvg =
+            "<svg width='36' height='43' viewBox='0 0 100 120' fill='none' xmlns='http://www.w3.org/2000/svg'>"
+            + "<path d='M50 15L15 30V65C15 85 50 105 50 105C50 105 85 85 85 65V30L50 15Z' fill='#0D9488'/>"
+            + "<path d='M35 68L48 50L58 60L75 35' stroke='#5EEAD4' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/>"
+            + "<circle cx='75' cy='35' r='7' fill='white'/>"
+            + "</svg>";
+
+        return "<!DOCTYPE html>"
+            + "<html lang='en'><head><meta charset='UTF-8'>"
+            + "<meta name='viewport' content='width=device-width,initial-scale=1'></head>"
+            + "<body style='font-family:Arial,sans-serif;background:#070b14;color:#e2e8f0;margin:0;padding:0'>"
+            + "<table width='100%' cellpadding='0' cellspacing='0'><tr><td align='center' style='padding:40px 16px'>"
+            + "<table width='560' cellpadding='0' cellspacing='0' style='max-width:560px'>"
+
+            // ── Logo header ──────────────────────────────────────────────
+            + "<tr><td align='center' style='padding-bottom:28px'>"
+            + "<table cellpadding='0' cellspacing='0'><tr>"
+            + "<td style='padding-right:12px;vertical-align:middle'>" + shieldSvg + "</td>"
+            + "<td style='vertical-align:middle'>"
+            + "<div style='font-size:26px;font-weight:700;color:white;letter-spacing:-0.5px;font-family:Arial,sans-serif'>"
+            + "Market<span style='color:#5EEAD4;font-weight:400'>Saga</span></div>"
+            + "<div style='font-size:7px;font-weight:800;color:#475569;letter-spacing:3px;margin-top:2px'>TRADE WITH CLARITY</div>"
+            + "</td></tr></table></td></tr>"
+
+            // ── Card ─────────────────────────────────────────────────────
+            + "<tr><td style='background:#0d1117;border:1px solid #1e2433;border-radius:16px;padding:36px'>"
+            + "<table width='100%' cellpadding='0' cellspacing='0'>"
+
+            // Title
+            + "<tr><td align='center' style='padding-bottom:8px'>"
+            + "<div style='font-size:11px;background:rgba(13,148,136,.15);color:#5EEAD4;"
+            + "border:1px solid rgba(13,148,136,.3);border-radius:100px;padding:5px 14px;"
+            + "font-weight:800;letter-spacing:2px;display:inline-block'>🔐 VERIFICATION CODE</div>"
+            + "</td></tr>"
+            + "<tr><td align='center' style='padding:12px 0 6px'>"
+            + "<div style='font-size:22px;font-weight:700;color:#e2e8f0'>Enter this code to " + actionLabel + "</div>"
+            + "</td></tr>"
+            + "<tr><td align='center' style='padding-bottom:28px'>"
+            + "<div style='font-size:14px;color:#475569;line-height:1.6'>"
+            + "Valid for <strong style='color:#94a3b8'>10 minutes</strong>. Do not share this code with anyone.</div>"
+            + "</td></tr>"
+
+            // OTP digits
+            + "<tr><td align='center' style='padding-bottom:28px'>"
+            + "<table cellpadding='0' cellspacing='0'><tr>" + digits + "</tr></table>"
+            + "</td></tr>"
+
+            // Divider
+            + "<tr><td style='border-top:1px solid #1e2433;padding-top:24px'></td></tr>"
+
+            // Security notice
+            + "<tr><td style='padding-top:16px'>"
+            + "<table width='100%' style='background:rgba(245,158,11,.06);border-left:3px solid #f59e0b;"
+            + "border-radius:0 8px 8px 0' cellpadding='0' cellspacing='0'>"
+            + "<tr><td style='padding:12px 16px'>"
+            + "<div style='font-size:12px;color:#fbbf24;line-height:1.6'>"
+            + "<strong>Security notice:</strong> Market Saga will never call or message you to ask "
+            + "for this code. If you did not request this, please ignore this email.</div>"
+            + "</td></tr></table></td></tr>"
+
+            + "</table></td></tr>"
+
+            // Footer
+            + "<tr><td align='center' style='padding-top:24px'>"
+            + "<table cellpadding='0' cellspacing='0'><tr>"
+            + "<td style='padding-right:8px'>" + shieldSvg.replace("width='36' height='43'","width='16' height='19'").replace("opacity","display") + "</td>"
+            + "<td style='font-size:11px;color:#334155;font-family:Arial'>"
+            + "Sent from <a href='https://marketsaga.site' style='color:#0D9488;text-decoration:none'>marketsaga.site</a>"
+            + " · <a href='https://marketsaga.site' style='color:#334155;text-decoration:none'>Unsubscribe</a>"
+            + "</td></tr></table>"
+            + "</td></tr>"
+
+            + "</table></td></tr></table>"
+            + "</body></html>";
     }
 }

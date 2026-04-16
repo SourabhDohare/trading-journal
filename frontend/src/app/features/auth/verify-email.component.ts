@@ -16,10 +16,7 @@ import { AuthService } from '../../core/services/auth.service';
     <div class="auth-shell">
       <div class="auth-card">
 
-        <div class="brand">
-          <span class="brand-icon">◈</span>
-          <span class="brand-name">MarketSaga</span>
-        </div>
+        <app-auth-logo/>
 
         <!-- Icon + title -->
         <div class="verify-icon">🔐</div>

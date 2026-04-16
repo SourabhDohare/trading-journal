@@ -15,10 +15,7 @@ import { environment } from '../../../environments/environment';
     <div class="auth-shell">
       <div class="auth-card">
 
-        <div class="brand">
-          <span class="brand-icon">◈</span>
-          <span class="brand-name">MarketSaga</span>
-        </div>
+        <app-auth-logo/>
 
         <!-- Step 1: Enter OTP -->
         <ng-container *ngIf="step() === 1">
