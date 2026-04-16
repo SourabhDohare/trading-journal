@@ -408,7 +408,7 @@ export class LayoutComponent implements OnInit {
   // This fetches strictMode, avatar, etc. fresh from backend
   // and overwrites any stale data in localStorage
   ngOnInit(): void {
-    this.authService.refreshProfileInBackground();
+    this.authService.refreshProfile();
   }
 
   toggleSidebar() {
