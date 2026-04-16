@@ -1,5 +1,5 @@
 // src/app/shared/components/layout/layout.component.ts
-import { Component, signal, computed } from "@angular/core";
+import { Component, OnInit, signal, computed } from "@angular/core";
 import { RouterOutlet, RouterLink, RouterLinkActive } from "@angular/router";
 import { CommonModule } from "@angular/common";
 import { AuthService } from "../../../core/services/auth.service";
@@ -17,9 +17,8 @@ interface NavItem {
   template: `
     <div class="shell">
       <aside class="sidebar" [class.collapsed]="sidebarCollapsed()">
-        <!-- ── HEADER / LOGO ────────────────────────────────────────── -->
+        <!-- ── HEADER / LOGO ─────────────────────────────────────── -->
         <div class="sidebar-header">
-          <!-- Expanded: full logo with wordmark -->
           <a
             routerLink="/dashboard"
             class="logo-link"
@@ -32,7 +31,6 @@ interface NavItem {
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
             >
-              <!-- Shield icon -->
               <g transform="translate(0, 2) scale(0.35)">
                 <path
                   d="M50 15L15 30V65C15 85 50 105 50 105C50 105 85 85 85 65V30L50 15Z"
@@ -47,7 +45,6 @@ interface NavItem {
                 />
                 <circle cx="75" cy="35" r="7" fill="white" />
               </g>
-              <!-- Wordmark -->
               <text
                 x="40"
                 y="25"
@@ -57,7 +54,6 @@ interface NavItem {
                 Market
                 <tspan fill="#5EEAD4" font-weight="400">Saga</tspan>
               </text>
-              <!-- Tagline -->
               <text
                 x="41"
                 y="38"
@@ -69,7 +65,6 @@ interface NavItem {
             </svg>
           </a>
 
-          <!-- Collapsed: shield icon only -->
           <a
             routerLink="/dashboard"
             class="logo-link logo-icon-only"
@@ -106,7 +101,8 @@ interface NavItem {
           </button>
         </div>
 
-        <!-- ── STRICT MODE BADGE ────────────────────────────────────── -->
+        <!-- ── STRICT MODE BADGE ─────────────────────────────────── -->
+        <!-- FIX: strictMode() now reads fresh data from backend via refreshProfile() -->
         <div class="strict-badge" *ngIf="strictMode() && !sidebarCollapsed()">
           🔒 <span>STRICT MODE</span>
         </div>
@@ -118,7 +114,7 @@ interface NavItem {
           🔒
         </div>
 
-        <!-- ── NAV ─────────────────────────────────────────────────── -->
+        <!-- ── NAV ──────────────────────────────────────────────── -->
         <nav class="sidebar-nav">
           <a
             *ngFor="let item of navItems"
@@ -134,7 +130,7 @@ interface NavItem {
           </a>
         </nav>
 
-        <!-- ── FOOTER / USER ───────────────────────────────────────── -->
+        <!-- ── FOOTER / USER ─────────────────────────────────────── -->
         <div class="sidebar-footer">
           <a
             routerLink="/profile"
@@ -142,6 +138,7 @@ interface NavItem {
             [title]="sidebarCollapsed() ? userName() : ''"
           >
             <div class="user-avatar">
+              <!-- FIX: checks avatarBase64 first, then avatarUrl (Google photo) -->
               <img
                 *ngIf="userAvatar()"
                 [src]="userAvatar()!"
@@ -174,9 +171,7 @@ interface NavItem {
         </div>
       </aside>
 
-      <main class="main-content">
-        <router-outlet />
-      </main>
+      <main class="main-content"><router-outlet /></main>
     </div>
   `,
   styles: [
@@ -185,7 +180,6 @@ interface NavItem {
         display: block;
         height: 100vh;
       }
-
       .shell {
         display: flex;
         height: 100vh;
@@ -197,7 +191,6 @@ interface NavItem {
           sans-serif;
       }
 
-      /* ── Sidebar ─────────────────────────────────────────────────────── */
       .sidebar {
         width: 232px;
         min-height: 100vh;
@@ -212,7 +205,6 @@ interface NavItem {
         width: 64px;
       }
 
-      /* ── Header ──────────────────────────────────────────────────────── */
       .sidebar-header {
         display: flex;
         align-items: center;
@@ -250,7 +242,6 @@ interface NavItem {
         color: #0d9488;
       }
 
-      /* ── Strict Mode ─────────────────────────────────────────────────── */
       .strict-badge {
         margin: 8px 10px 0;
         padding: 6px 10px;
@@ -271,7 +262,6 @@ interface NavItem {
         padding: 6px 0;
       }
 
-      /* ── Nav ─────────────────────────────────────────────────────────── */
       .sidebar-nav {
         flex: 1;
         padding: 12px 8px;
@@ -308,7 +298,6 @@ interface NavItem {
         flex-shrink: 0;
       }
 
-      /* ── Footer ──────────────────────────────────────────────────────── */
       .sidebar-footer {
         padding: 12px 8px;
         border-top: 1px solid #1e2433;
@@ -320,7 +309,7 @@ interface NavItem {
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 10px 10px;
+        padding: 10px;
         border-radius: 10px;
         text-decoration: none;
         transition: background 0.15s;
@@ -394,7 +383,6 @@ interface NavItem {
         padding: 7px 4px;
       }
 
-      /* ── Main ────────────────────────────────────────────────────────── */
       .main-content {
         flex: 1;
         overflow-y: auto;
@@ -403,7 +391,7 @@ interface NavItem {
     `,
   ],
 })
-export class LayoutComponent {
+export class LayoutComponent implements OnInit {
   sidebarCollapsed = signal(false);
 
   navItems: NavItem[] = [
@@ -415,6 +403,13 @@ export class LayoutComponent {
   ];
 
   constructor(private authService: AuthService) {}
+
+  // FIX: call refreshProfile() on every layout load
+  // This fetches strictMode, avatar, etc. fresh from backend
+  // and overwrites any stale data in localStorage
+  ngOnInit(): void {
+    this.authService.refreshProfileInBackground();
+  }
 
   toggleSidebar() {
     this.sidebarCollapsed.update((v) => !v);
@@ -430,12 +425,22 @@ export class LayoutComponent {
       this.authService.currentUser()?.email ||
       "Trader",
   );
+
   userRole = computed(
     () => (this.authService.currentUser() as any)?.role || "TRADER",
   );
-  userAvatar = computed(
-    () => (this.authService.currentUser() as any)?.avatarBase64 || null,
-  );
+
+  // FIX: check avatarBase64 first, then avatarUrl (Google/GitHub photo)
+  // Previously only checked avatarBase64 so Google profile photos never showed
+  userAvatar = computed(() => {
+    const u = this.authService.currentUser() as any;
+    if (u?.avatarBase64 && u.avatarBase64.length > 0) return u.avatarBase64;
+    if (u?.avatarUrl && u.avatarUrl.length > 0) return u.avatarUrl;
+    return null;
+  });
+
+  // FIX: reads strictMode directly from fresh backend data (after refreshProfile)
+  // No longer relies on stale localStorage value
   strictMode = computed(
     () => (this.authService.currentUser() as any)?.strictMode === true,
   );
