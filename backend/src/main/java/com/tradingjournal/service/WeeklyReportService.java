@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -31,236 +30,191 @@ public class WeeklyReportService {
     private final TradeRepository tradeRepository;
     private final EmailService    emailService;
 
-    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy");
+    private static final DateTimeFormatter DATE_FMT  = DateTimeFormatter.ofPattern("dd MMM yyyy");
+    private static final String            APP_NAME  = "Market Saga";
+    private static final String            APP_URL   = "https://marketsaga.site";
 
-    // ── CHANGED: Saturday 8 AM UTC (was Monday) ──────────────────────────────
+    // Saturday 8 AM UTC
     @Scheduled(cron = "0 0 8 * * SAT")
     public void sendWeeklyReports() {
         log.info("Starting Saturday weekly report job...");
-
-        // Report covers Mon–Fri of the just-completed trading week
-        LocalDate weekEnd   = LocalDate.now().minusDays(1); // Friday
-        LocalDate weekStart = weekEnd.minusDays(6);          // Saturday before
-
-        LocalDateTime from = weekStart.atStartOfDay();
-        LocalDateTime to   = weekEnd.atTime(23, 59, 59);
-
-        List<User> users = userRepository.findAll().stream()
-                .filter(u -> u.isActive() && u.isWeeklyReportEmail())
-                .collect(Collectors.toList());
-
-        log.info("Sending Saturday reports to {} users ({} to {})",
-                users.size(), weekStart, weekEnd);
-
-        for (User user : users) {
-            try {
-                sendWeeklyReportForUser(user, from, to, weekStart, weekEnd);
-            } catch (Exception e) {
-                log.error("Failed for {}: {}", user.getEmail(), e.getMessage());
-            }
-        }
-    }
-
-    // ── TEST: trigger immediately for current user ────────────────────────────
-    public void sendWeeklyReportForCurrentUser(String userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
-
-        LocalDate weekEnd   = LocalDate.now();
+        LocalDate weekEnd   = LocalDate.now().minusDays(1);
         LocalDate weekStart = weekEnd.minusDays(6);
         LocalDateTime from  = weekStart.atStartOfDay();
         LocalDateTime to    = weekEnd.atTime(23, 59, 59);
-
-        log.info("TEST: Sending report for {} ({} to {})", user.getEmail(), weekStart, weekEnd);
-        sendWeeklyReportForUser(user, from, to, weekStart, weekEnd);
+        List<User> users = userRepository.findAll().stream()
+                .filter(u -> u.isActive() && u.isWeeklyReportEmail()).collect(Collectors.toList());
+        log.info("Sending reports to {} users ({} to {})", users.size(), weekStart, weekEnd);
+        for (User user : users) {
+            try { sendWeeklyReportForUser(user, from, to, weekStart, weekEnd); }
+            catch (Exception e) { log.error("Failed for {}: {}", user.getEmail(), e.getMessage()); }
+        }
     }
 
-    // ── CUSTOM RANGE: email + return PDF bytes ────────────────────────────────
-    // Called by ReportController for on-demand reports with date picker
-    public byte[] generateCustomReport(String userId, LocalDate from, LocalDate to,
-                                       boolean sendEmail) {
+    public void sendWeeklyReportForCurrentUser(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        LocalDate weekEnd   = LocalDate.now();
+        LocalDate weekStart = weekEnd.minusDays(6);
+        sendWeeklyReportForUser(user, weekStart.atStartOfDay(), weekEnd.atTime(23, 59, 59), weekStart, weekEnd);
+    }
 
-        LocalDateTime dtFrom = from.atStartOfDay();
-        LocalDateTime dtTo   = to.atTime(23, 59, 59);
+    public byte[] generateCustomReport(String userId, LocalDate from, LocalDate to, boolean sendEmail) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        List<Trade> closed = tradeRepository
+                .findByUserIdAndTradeDateBetweenOrderByTradeDateDesc(userId, from.atStartOfDay(), to.atTime(23,59,59))
+                .stream().filter(t -> t.getOutcomeTag() != null
+                        && t.getOutcomeTag() != Trade.OutcomeTag.OPEN
+                        && t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE).collect(Collectors.toList());
 
-        List<Trade> allTrades = tradeRepository
-                .findByUserIdAndTradeDateBetweenOrderByTradeDateDesc(userId, dtFrom, dtTo);
-
-        List<Trade> closed = allTrades.stream()
-                .filter(t -> t.getOutcomeTag() != null
-                          && t.getOutcomeTag() != Trade.OutcomeTag.OPEN
-                          && t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE)
-                .collect(Collectors.toList());
-
-        String userName  = user.getEffectiveDisplayName();
+        String userName   = user.getEffectiveDisplayName();
         String rangeLabel = from.format(DATE_FMT) + " – " + to.format(DATE_FMT);
-
-        WeekStats stats  = computeStats(closed);
-        String htmlBody  = buildReportHtml(userName, rangeLabel, stats, closed);
+        WeekStats stats   = computeStats(closed);
+        String htmlBody   = buildReportHtml(userName, rangeLabel, stats, closed);
         byte[] pdfBytes;
 
-        try {
-            pdfBytes = buildReportPdf(userName, rangeLabel, stats, closed);
-        } catch (Exception e) {
-            log.error("PDF generation failed: {}", e.getMessage());
-            throw new RuntimeException("PDF generation failed: " + e.getMessage(), e);
-        }
+        try { pdfBytes = buildReportPdf(userName, rangeLabel, stats, closed); }
+        catch (Exception e) { throw new RuntimeException("PDF generation failed: " + e.getMessage(), e); }
 
         if (sendEmail) {
             String filename = "MarketSaga_Report_" + from + "_to_" + to + ".pdf";
-            try {
-                emailService.sendEmailWithAttachment(
-                        user.getEmail(),
-                        "📊 MarketSaga Report — " + rangeLabel,
-                        htmlBody, pdfBytes, filename);
-                log.info("Custom report emailed to {} for range {}", user.getEmail(), rangeLabel);
-            } catch (Exception e) {
-                // Fall back to HTML-only
-                emailService.sendHtmlEmail(user.getEmail(),
-                        "📊 MarketSaga Report — " + rangeLabel, htmlBody);
-            }
+            String subject  = "📊 " + APP_NAME + " Performance Report — " + rangeLabel;
+            try { emailService.sendEmailWithAttachment(user.getEmail(), subject, htmlBody, pdfBytes, filename); }
+            catch (Exception e) { emailService.sendHtmlEmail(user.getEmail(), subject, htmlBody); }
         }
-
         return pdfBytes;
     }
 
-    // ── Per-user weekly report ────────────────────────────────────────────────
     void sendWeeklyReportForUser(User user, LocalDateTime from, LocalDateTime to,
                                   LocalDate weekStart, LocalDate weekEnd) {
         List<Trade> weekTrades = tradeRepository
                 .findByUserIdAndTradeDateBetweenOrderByTradeDateDesc(user.getId(), from, to);
-
         String userName  = user.getEffectiveDisplayName();
         String weekLabel = weekStart.format(DATE_FMT) + " – " + weekEnd.format(DATE_FMT);
 
-        if (weekTrades.isEmpty()) {
-            log.info("No trades for {} — sending nudge email", user.getEmail());
-            sendNoActivityEmail(user.getEmail(), userName, weekLabel);
-            return;
-        }
+        if (weekTrades.isEmpty()) { sendNoActivityEmail(user.getEmail(), userName, weekLabel); return; }
 
-        List<Trade> closed = weekTrades.stream()
-                .filter(t -> t.getOutcomeTag() != null
-                          && t.getOutcomeTag() != Trade.OutcomeTag.OPEN
-                          && t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE)
-                .collect(Collectors.toList());
+        List<Trade> closed = weekTrades.stream().filter(t -> t.getOutcomeTag() != null
+                && t.getOutcomeTag() != Trade.OutcomeTag.OPEN
+                && t.getOutcomeTag() != Trade.OutcomeTag.NO_TRADE).collect(Collectors.toList());
 
-        log.info("{} closed trades for {} — sending report", closed.size(), user.getEmail());
-        WeekStats stats  = computeStats(closed);
-        String htmlBody  = buildReportHtml(userName, weekLabel, stats, closed);
+        WeekStats stats = computeStats(closed);
+        String htmlBody = buildReportHtml(userName, weekLabel, stats, closed);
+        String subject  = "📊 " + APP_NAME + " Weekly Report — " + weekLabel;
 
         try {
-            byte[] pdf      = buildReportPdf(userName, weekLabel, stats, closed);
-            String filename = "MarketSaga_Report_" + weekStart + ".pdf";
-            emailService.sendEmailWithAttachment(
-                    user.getEmail(),
-                    "📊 Your MarketSaga Weekly Report — " + weekLabel,
-                    htmlBody, pdf, filename);
+            byte[] pdf = buildReportPdf(userName, weekLabel, stats, closed);
+            emailService.sendEmailWithAttachment(user.getEmail(), subject, htmlBody, pdf,
+                    "MarketSaga_Report_" + weekStart + ".pdf");
         } catch (Exception e) {
             log.warn("PDF failed for {}, HTML only: {}", user.getEmail(), e.getMessage());
-            emailService.sendHtmlEmail(user.getEmail(),
-                    "📊 Your MarketSaga Weekly Report — " + weekLabel, htmlBody);
+            emailService.sendHtmlEmail(user.getEmail(), subject, htmlBody);
         }
     }
 
-    // ── No-activity nudge ─────────────────────────────────────────────────────
+    // ── No-activity nudge ─────────────────────────────────────────────────
     private void sendNoActivityEmail(String email, String name, String weekLabel) {
-        String html = "<!DOCTYPE html><html><body style='font-family:Inter,sans-serif;background:#0a0e1a;color:#e2e8f0;padding:0;margin:0'>"
-                + "<div style='max-width:600px;margin:0 auto;padding:40px 24px'>"
-                + "<div style='text-align:center;margin-bottom:32px'><span style='font-size:32px;font-weight:900;"
-                + "background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent'>MarketSaga</span></div>"
-                + "<div style='background:#0d1117;border:1px solid #1e2433;border-radius:16px;padding:32px'>"
-                + "<h2 style='color:#e2e8f0;margin:0 0 8px'>Hey " + name + " 👋</h2>"
+        String shield = shield(32, 38);
+        String html = page(shield,
+                "<h2 style='color:#e2e8f0;margin:0 0 8px'>Hey " + name + " 👋</h2>"
                 + "<p style='color:#64748b;margin:0 0 24px;font-size:14px'>Week: " + weekLabel + "</p>"
-                + "<div style='background:#1e2433;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px'>"
+                + "<div style='background:#111827;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px'>"
                 + "<div style='font-size:48px;margin-bottom:12px'>📭</div>"
                 + "<h3 style='color:#e2e8f0;margin:0 0 8px'>No trades logged this week</h3>"
-                + "<p style='color:#64748b;margin:0;font-size:14px'>Markets wait for no one — but discipline means knowing when to sit out too.</p></div>"
-                + "<div style='border-left:3px solid #3b82f6;padding:12px 16px;background:rgba(59,130,246,0.08);border-radius:0 8px 8px 0;margin-bottom:24px'>"
-                + "<p style='color:#94a3b8;margin:0;font-size:13px;line-height:1.6'><strong style='color:#3b82f6'>Reminder:</strong> "
-                + "Consistent journaling builds the pattern recognition that separates professional traders from amateurs.</p></div>"
-                + "<div style='text-align:center'><a href='https://trading-journal-plum-gamma.vercel.app/journal' "
-                + "style='display:inline-block;background:#3b82f6;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px'>Open Journal →</a></div>"
-                + "</div><p style='text-align:center;color:#334155;font-size:12px;margin-top:24px'>"
-                + "<a href='https://trading-journal-plum-gamma.vercel.app/profile' style='color:#475569'>Manage email preferences</a></p>"
-                + "</div></body></html>";
-        emailService.sendHtmlEmail(email, "MarketSaga — No trades logged this week", html);
+                + "<p style='color:#64748b;margin:0;font-size:14px'>Markets wait for no one — but discipline means knowing when to sit out too.</p>"
+                + "</div>"
+                + "<div style='border-left:3px solid #0D9488;padding:12px 16px;background:rgba(13,148,136,.08);border-radius:0 8px 8px 0;margin-bottom:24px'>"
+                + "<p style='color:#5EEAD4;margin:0;font-size:13px;line-height:1.6'>"
+                + "<strong>Reminder:</strong> Consistent journaling — even on non-trading days — builds the pattern recognition that separates professionals.</p>"
+                + "</div>"
+                + "<div style='text-align:center'><a href='" + APP_URL + "/journal' "
+                + "style='display:inline-block;background:#0D9488;color:#fff;padding:12px 28px;"
+                + "border-radius:8px;text-decoration:none;font-weight:700;font-size:14px'>Open Journal →</a></div>");
+        emailService.sendHtmlEmail(email, APP_NAME + " — No trades logged this week", html);
     }
 
-    // ── Stats ─────────────────────────────────────────────────────────────────
-    private WeekStats computeStats(List<Trade> closed) {
-        WeekStats s   = new WeekStats();
-        s.totalTrades = closed.size();
-        s.wins        = (int) closed.stream().filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.PROFIT).count();
-        s.losses      = (int) closed.stream().filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.LOSS).count();
-        s.winRate     = s.totalTrades > 0
-                ? BigDecimal.valueOf(s.wins * 100.0 / s.totalTrades).setScale(1, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO;
-        s.totalPnl    = closed.stream().map(Trade::getPnlAbsolute).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-        s.bestTrade   = closed.stream().map(Trade::getPnlAbsolute).filter(Objects::nonNull).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-        s.worstTrade  = closed.stream().map(Trade::getPnlAbsolute).filter(Objects::nonNull).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
-        s.avgRR       = closed.stream().map(Trade::getActualRR).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-        long rrCount  = closed.stream().map(Trade::getActualRR).filter(Objects::nonNull).count();
-        if (rrCount > 0) s.avgRR = s.avgRR.divide(BigDecimal.valueOf(rrCount), 2, RoundingMode.HALF_UP);
-        s.slBreaches  = (int) closed.stream().filter(t -> !t.isSlRespected()).count();
-        return s;
-    }
-
-    // ── HTML email body ───────────────────────────────────────────────────────
+    // ── HTML email body ───────────────────────────────────────────────────
     private String buildReportHtml(String name, String rangeLabel, WeekStats s, List<Trade> trades) {
         String pnlColor  = s.totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? "#22c55e" : "#ef4444";
         String pnlPrefix = s.totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "";
         String grade     = s.slBreaches == 0 ? "A" : s.slBreaches <= 1 ? "B" : "C";
-        String gradeColor= grade.equals("A") ? "#22c55e" : grade.equals("B") ? "#f59e0b" : "#ef4444";
+        String gradeColor= "A".equals(grade) ? "#22c55e" : "B".equals(grade) ? "#f59e0b" : "#ef4444";
 
         StringBuilder rows = new StringBuilder();
         for (Trade t : trades) {
-            String tColor = t.getPnlAbsolute() != null && t.getPnlAbsolute().compareTo(BigDecimal.ZERO) >= 0 ? "#22c55e" : "#ef4444";
-            String tPnl   = t.getPnlAbsolute() != null
+            String tc  = t.getPnlAbsolute() != null && t.getPnlAbsolute().compareTo(BigDecimal.ZERO) >= 0 ? "#22c55e" : "#ef4444";
+            String tPnl= t.getPnlAbsolute() != null
                     ? (t.getPnlAbsolute().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + "₹" + t.getPnlAbsolute().toPlainString() : "—";
             rows.append("<tr>")
                 .append("<td style='padding:10px 8px;color:#94a3b8;border-bottom:1px solid #1e2433'>").append(t.getInstrument()).append("</td>")
                 .append("<td style='padding:10px 8px;color:#64748b;border-bottom:1px solid #1e2433'>").append(t.getTradeType()).append("</td>")
                 .append("<td style='padding:10px 8px;border-bottom:1px solid #1e2433;color:").append(t.getDirection() == Trade.Direction.BUY ? "#22c55e" : "#ef4444").append("'>").append(t.getDirection()).append("</td>")
-                .append("<td style='padding:10px 8px;color:").append(tColor).append(";font-weight:700;border-bottom:1px solid #1e2433'>").append(tPnl).append("</td>")
+                .append("<td style='padding:10px 8px;color:").append(tc).append(";font-weight:700;border-bottom:1px solid #1e2433'>").append(tPnl).append("</td>")
                 .append("<td style='padding:10px 8px;border-bottom:1px solid #1e2433;color:#64748b'>").append(t.getOutcomeTag()).append("</td>")
                 .append("</tr>");
         }
 
-        return "<!DOCTYPE html><html><body style='font-family:Inter,sans-serif;background:#0a0e1a;color:#e2e8f0;padding:0;margin:0'>"
-                + "<div style='max-width:680px;margin:0 auto;padding:40px 24px'>"
-                + "<div style='text-align:center;margin-bottom:32px'><span style='font-size:28px;font-weight:900;"
-                + "background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent'>MarketSaga</span>"
-                + "<p style='color:#475569;font-size:13px;margin:6px 0 0'>Performance Report</p></div>"
-                + "<div style='background:#0d1117;border:1px solid #1e2433;border-radius:16px;padding:32px;margin-bottom:20px'>"
-                + "<h2 style='margin:0 0 4px;font-size:20px'>Hey " + name + " 👋</h2>"
+        String body =
+                "<h2 style='margin:0 0 4px;font-size:20px'>Hey " + name + " 👋</h2>"
                 + "<p style='color:#64748b;margin:0 0 28px;font-size:14px'>" + rangeLabel + "</p>"
                 + "<div style='display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:28px'>"
-                + kpiCard("Total P&L", pnlPrefix + "₹" + s.totalPnl.toPlainString(), pnlColor)
-                + kpiCard("Win Rate", s.winRate + "%", s.winRate.compareTo(BigDecimal.valueOf(50)) >= 0 ? "#22c55e" : "#ef4444")
-                + kpiCard("Trades", String.valueOf(s.totalTrades), "#94a3b8")
-                + kpiCard("Best Trade", "+₹" + s.bestTrade.toPlainString(), "#22c55e")
+                + kpiCard("Total P&L",   pnlPrefix + "₹" + s.totalPnl.toPlainString(), pnlColor)
+                + kpiCard("Win Rate",    s.winRate + "%", s.winRate.compareTo(BigDecimal.valueOf(50)) >= 0 ? "#22c55e" : "#ef4444")
+                + kpiCard("Trades",      String.valueOf(s.totalTrades), "#94a3b8")
+                + kpiCard("Best Trade",  "+₹" + s.bestTrade.toPlainString(), "#22c55e")
                 + kpiCard("Worst Trade", "₹" + s.worstTrade.toPlainString(), "#ef4444")
-                + kpiCard("Discipline", grade, gradeColor)
+                + kpiCard("Discipline",  grade, gradeColor)
                 + "</div>"
+                + "<h3 style='font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:#475569;margin:0 0 12px'>Trades This Period</h3>"
                 + "<table style='width:100%;border-collapse:collapse;font-size:13px'><thead><tr>"
-                + "<th style='text-align:left;padding:8px;color:#475569;font-size:11px;text-transform:uppercase;border-bottom:1px solid #1e2433'>Instrument</th>"
-                + "<th style='text-align:left;padding:8px;color:#475569;font-size:11px;text-transform:uppercase;border-bottom:1px solid #1e2433'>Type</th>"
-                + "<th style='text-align:left;padding:8px;color:#475569;font-size:11px;text-transform:uppercase;border-bottom:1px solid #1e2433'>Dir</th>"
-                + "<th style='text-align:left;padding:8px;color:#475569;font-size:11px;text-transform:uppercase;border-bottom:1px solid #1e2433'>P&L</th>"
-                + "<th style='text-align:left;padding:8px;color:#475569;font-size:11px;text-transform:uppercase;border-bottom:1px solid #1e2433'>Status</th>"
+                + thCell("Instrument") + thCell("Type") + thCell("Dir") + thCell("P&L") + thCell("Status")
                 + "</tr></thead><tbody>" + rows + "</tbody></table>"
                 + (s.slBreaches > 0
                     ? "<div style='margin-top:20px;background:rgba(239,68,68,.08);border-left:3px solid #ef4444;border-radius:0 8px 8px 0;padding:12px 16px'><p style='color:#f87171;margin:0;font-size:13px'>⚠ <strong>" + s.slBreaches + " SL breach(es)</strong> this period.</p></div>"
-                    : "<div style='margin-top:20px;background:rgba(34,197,94,.08);border-left:3px solid #22c55e;border-radius:0 8px 8px 0;padding:12px 16px'><p style='color:#4ade80;margin:0;font-size:13px'>✓ Perfect discipline — no SL breaches.</p></div>")
-                + "</div>"
-                + "<div style='text-align:center;margin-bottom:20px'><a href='https://trading-journal-plum-gamma.vercel.app/analytics' "
-                + "style='display:inline-block;background:#3b82f6;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px'>View Full Analytics →</a></div>"
-                + "<p style='text-align:center;color:#334155;font-size:12px'>PDF attached · "
-                + "<a href='https://trading-journal-plum-gamma.vercel.app/profile' style='color:#475569'>Manage preferences</a></p>"
-                + "</div></body></html>";
+                    : "<div style='margin-top:20px;background:rgba(13,148,136,.08);border-left:3px solid #0D9488;border-radius:0 8px 8px 0;padding:12px 16px'><p style='color:#5EEAD4;margin:0;font-size:13px'>✓ Perfect discipline — no SL breaches. Keep it up.</p></div>")
+                + "<div style='text-align:center;margin-top:24px'>"
+                + "<a href='" + APP_URL + "/analytics' style='display:inline-block;background:#0D9488;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px'>View Full Analytics →</a>"
+                + "</div>";
+
+        return page(shield(28, 33), body);
+    }
+
+    // ── Shared email page wrapper ─────────────────────────────────────────
+    private String page(String shieldSvg, String bodyHtml) {
+        return "<!DOCTYPE html><html><body style='font-family:Arial,sans-serif;background:#070b14;color:#e2e8f0;margin:0;padding:0'>"
+            + "<table width='100%' cellpadding='0' cellspacing='0'><tr><td align='center' style='padding:40px 16px'>"
+            + "<table width='620' cellpadding='0' cellspacing='0' style='max-width:620px'>"
+            // Brand header
+            + "<tr><td align='center' style='padding-bottom:28px'>"
+            + "<table cellpadding='0' cellspacing='0'><tr>"
+            + "<td style='padding-right:12px;vertical-align:middle'>" + shieldSvg + "</td>"
+            + "<td style='vertical-align:middle'>"
+            + "<div style='font-size:24px;font-weight:700;color:white'>Market<span style='color:#5EEAD4;font-weight:400'>Saga</span></div>"
+            + "<div style='font-size:7px;font-weight:800;color:#475569;letter-spacing:3px;margin-top:2px'>TRADE WITH CLARITY</div>"
+            + "</td></tr></table></td></tr>"
+            // Badge
+            + "<tr><td align='center' style='padding-bottom:16px'>"
+            + "<div style='display:inline-block;background:rgba(13,148,136,.15);color:#5EEAD4;"
+            + "border:1px solid rgba(13,148,136,.3);border-radius:100px;padding:5px 16px;"
+            + "font-size:11px;font-weight:800;letter-spacing:2px'>📊 PERFORMANCE REPORT</div>"
+            + "</td></tr>"
+            // Card
+            + "<tr><td style='background:#0d1117;border:1px solid #1e2433;border-radius:16px;padding:32px'>"
+            + bodyHtml + "</td></tr>"
+            // Footer
+            + "<tr><td align='center' style='padding-top:20px'>"
+            + "<p style='font-size:11px;color:#334155;margin:0'>Sent from "
+            + "<a href='" + APP_URL + "' style='color:#0D9488;text-decoration:none'>" + APP_URL + "</a>"
+            + " · <a href='" + APP_URL + "/profile' style='color:#334155;text-decoration:none'>Manage preferences</a></p>"
+            + "</td></tr></table></td></tr></table></body></html>";
+    }
+
+    private String shield(int w, int h) {
+        return "<svg width='" + w + "' height='" + h + "' viewBox='0 0 100 120' fill='none' xmlns='http://www.w3.org/2000/svg'>"
+                + "<path d='M50 15L15 30V65C15 85 50 105 50 105C50 105 85 85 85 65V30L50 15Z' fill='#0D9488'/>"
+                + "<path d='M35 68L48 50L58 60L75 35' stroke='#5EEAD4' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/>"
+                + "<circle cx='75' cy='35' r='7' fill='white'/></svg>";
     }
 
     private String kpiCard(String label, String value, String color) {
@@ -269,7 +223,12 @@ public class WeeklyReportService {
                 + "<div style='font-size:22px;font-weight:700;color:" + color + "'>" + value + "</div></div>";
     }
 
-    // ── PDF ───────────────────────────────────────────────────────────────────
+    private String thCell(String label) {
+        return "<th style='text-align:left;padding:8px;color:#475569;font-size:11px;"
+                + "text-transform:uppercase;border-bottom:1px solid #1e2433'>" + label + "</th>";
+    }
+
+    // ── PDF ───────────────────────────────────────────────────────────────
     public byte[] buildReportPdf(String name, String rangeLabel, WeekStats s, List<Trade> trades)
             throws DocumentException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -277,26 +236,60 @@ public class WeeklyReportService {
         PdfWriter.getInstance(doc, baos);
         doc.open();
 
-        Font titleFont = new Font(Font.FontFamily.HELVETICA, 20, Font.BOLD,   new BaseColor(59, 130, 246));
-        Font headerFont= new Font(Font.FontFamily.HELVETICA, 11, Font.BOLD,   new BaseColor(100, 116, 139));
-        Font bodyFont  = new Font(Font.FontFamily.HELVETICA, 10, Font.NORMAL, new BaseColor(148, 163, 184));
-        Font boldFont  = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD,   new BaseColor(226, 232, 240));
-        Font greenFont = new Font(Font.FontFamily.HELVETICA, 14, Font.BOLD,   new BaseColor(34, 197, 94));
-        Font redFont   = new Font(Font.FontFamily.HELVETICA, 14, Font.BOLD,   new BaseColor(239, 68, 68));
-        Font smallGray = new Font(Font.FontFamily.HELVETICA,  9, Font.NORMAL, new BaseColor(71, 85, 105));
+        BaseColor teal    = new BaseColor(13,  148, 136);
+        BaseColor tealLt  = new BaseColor(94,  234, 212);
+        BaseColor slate6  = new BaseColor(71,   85, 105);
+        BaseColor slate4  = new BaseColor(148, 163, 184);
+        BaseColor ivory   = new BaseColor(226, 232, 240);
+        BaseColor green   = new BaseColor(34,  197,  94);
+        BaseColor red     = new BaseColor(239,  68,  68);
+        BaseColor dark    = new BaseColor(13,   17,  23);
+        BaseColor border  = new BaseColor(30,   36,  51);
+        BaseColor headBg  = new BaseColor(17,   24,  39);
 
-        Paragraph title = new Paragraph("MarketSaga — Performance Report", titleFont);
-        title.setAlignment(Element.ALIGN_CENTER);
-        doc.add(title);
-        Paragraph sub = new Paragraph(name + " · " + rangeLabel, bodyFont);
-        sub.setAlignment(Element.ALIGN_CENTER); sub.setSpacingBefore(4); sub.setSpacingAfter(20);
+        Font brand  = new Font(Font.FontFamily.HELVETICA, 28, Font.BOLD,   teal);
+        Font saga   = new Font(Font.FontFamily.HELVETICA, 28, Font.NORMAL, tealLt);
+        Font tag    = new Font(Font.FontFamily.HELVETICA,  8, Font.BOLD,   slate6);
+        Font hdr    = new Font(Font.FontFamily.HELVETICA, 11, Font.BOLD,   slate6);
+        Font body   = new Font(Font.FontFamily.HELVETICA, 10, Font.NORMAL, slate4);
+        Font bold   = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD,   ivory);
+        Font gf     = new Font(Font.FontFamily.HELVETICA, 14, Font.BOLD,   green);
+        Font rf     = new Font(Font.FontFamily.HELVETICA, 14, Font.BOLD,   red);
+        Font tf     = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD,   teal);
+        Font small  = new Font(Font.FontFamily.HELVETICA,  9, Font.NORMAL, slate6);
+        Font badge  = new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD,   tealLt);
+
+        // ── Wordmark ──────────────────────────────────────────────────────
+        Phrase wordmark = new Phrase();
+        wordmark.add(new Chunk("Market", brand));
+        wordmark.add(new Chunk("Saga",   saga));
+        Paragraph brandPara = new Paragraph(wordmark);
+        brandPara.setAlignment(Element.ALIGN_CENTER);
+        doc.add(brandPara);
+
+        Paragraph tagPara = new Paragraph("TRADE WITH CLARITY", tag);
+        tagPara.setAlignment(Element.ALIGN_CENTER);
+        tagPara.setSpacingAfter(4);
+        doc.add(tagPara);
+
+        Paragraph reportBadge = new Paragraph("PERFORMANCE REPORT", badge);
+        reportBadge.setAlignment(Element.ALIGN_CENTER);
+        reportBadge.setSpacingAfter(4);
+        doc.add(reportBadge);
+
+        Paragraph sub = new Paragraph(name + " · " + rangeLabel, body);
+        sub.setAlignment(Element.ALIGN_CENTER);
+        sub.setSpacingBefore(2);
+        sub.setSpacingAfter(16);
         doc.add(sub);
 
-        // KPI table
-        PdfPTable kpiTable = new PdfPTable(6);
-        kpiTable.setWidthPercentage(100); kpiTable.setSpacingAfter(20);
-        String[] kpiLabels = {"Total P&L","Win Rate","Trades","Best Trade","Worst Trade","SL Breaches"};
-        String[] kpiValues = {
+        doc.add(new Chunk(new LineSeparator(1f, 100f, border, Element.ALIGN_CENTER, -2)));
+
+        // ── KPI ───────────────────────────────────────────────────────────
+        PdfPTable kpi = new PdfPTable(6);
+        kpi.setWidthPercentage(100); kpi.setSpacingBefore(16); kpi.setSpacingAfter(20);
+        String[] kl = {"Total P&L","Win Rate","Trades","Best Trade","Worst Trade","SL Breaches"};
+        String[] kv = {
             (s.totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + "₹" + s.totalPnl.toPlainString(),
             s.winRate + "%", String.valueOf(s.totalTrades),
             "+₹" + s.bestTrade.toPlainString(), "₹" + s.worstTrade.toPlainString(),
@@ -304,51 +297,82 @@ public class WeeklyReportService {
         };
         for (int i = 0; i < 6; i++) {
             PdfPCell cell = new PdfPCell();
-            cell.setBorderColor(new BaseColor(30,36,51)); cell.setBackgroundColor(new BaseColor(13,17,23)); cell.setPadding(10);
-            Paragraph lbl = new Paragraph(kpiLabels[i], smallGray); lbl.setAlignment(Element.ALIGN_CENTER); cell.addElement(lbl);
-            Font vf = i == 0 ? (s.totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? greenFont : redFont)
-                    : (i == 4 || (i == 5 && s.slBreaches > 0)) ? redFont : greenFont;
-            Paragraph val = new Paragraph(kpiValues[i], vf); val.setAlignment(Element.ALIGN_CENTER); cell.addElement(val);
-            kpiTable.addCell(cell);
+            cell.setBorderColor(border); cell.setBackgroundColor(headBg); cell.setPadding(10);
+            Paragraph lbl = new Paragraph(kl[i], small); lbl.setAlignment(Element.ALIGN_CENTER); cell.addElement(lbl);
+            Font vf = i == 0 ? (s.totalPnl.compareTo(BigDecimal.ZERO) >= 0 ? gf : rf)
+                    : i == 2 ? new Font(Font.FontFamily.HELVETICA, 14, Font.BOLD, slate4)
+                    : (i == 4 || (i == 5 && s.slBreaches > 0)) ? rf : gf;
+            Paragraph val = new Paragraph(kv[i], vf); val.setAlignment(Element.ALIGN_CENTER); cell.addElement(val);
+            kpi.addCell(cell);
         }
-        doc.add(kpiTable);
+        doc.add(kpi);
 
-        // Trade rows
-        Paragraph th = new Paragraph("Trades", headerFont); th.setSpacingAfter(8); doc.add(th);
-        PdfPTable table = new PdfPTable(new float[]{2.5f,1.2f,0.8f,1.5f,1.5f,1.2f});
+        // ── Trade table ───────────────────────────────────────────────────
+        Paragraph th = new Paragraph("TRADES THIS PERIOD", hdr); th.setSpacingAfter(8); doc.add(th);
+        PdfPTable table = new PdfPTable(new float[]{2.5f, 1.2f, 0.8f, 1.5f, 1.5f, 1.2f});
         table.setWidthPercentage(100);
         for (String col : new String[]{"Instrument","Type","Dir","Entry","P&L","Status"}) {
-            PdfPCell hc = new PdfPCell(new Phrase(col, headerFont));
-            hc.setBackgroundColor(new BaseColor(17,24,39)); hc.setBorderColor(new BaseColor(30,36,51)); hc.setPadding(8);
+            PdfPCell hc = new PdfPCell(new Phrase(col, hdr));
+            hc.setBackgroundColor(headBg); hc.setBorderColor(border); hc.setPadding(8);
             table.addCell(hc);
         }
         for (Trade t : trades) {
             String pnlStr = t.getPnlAbsolute() != null
                     ? (t.getPnlAbsolute().compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + "₹" + t.getPnlAbsolute().toPlainString() : "—";
             Font pf = t.getPnlAbsolute() != null && t.getPnlAbsolute().compareTo(BigDecimal.ZERO) >= 0
-                    ? new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD, new BaseColor(34,197,94))
-                    : new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD, new BaseColor(239,68,68));
-            addCell(table, t.getInstrument(), boldFont);
-            addCell(table, t.getTradeType()  != null ? t.getTradeType().name()  : "—", bodyFont);
-            addCell(table, t.getDirection()  != null ? t.getDirection().name()  : "—", bodyFont);
-            addCell(table, t.getEntryPrice() != null ? "₹" + t.getEntryPrice().toPlainString() : "—", bodyFont);
-            addCell(table, pnlStr, pf);
-            addCell(table, t.getOutcomeTag() != null ? t.getOutcomeTag().name() : "—", bodyFont);
+                    ? new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD, green)
+                    : new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD, red);
+            Font df = t.getDirection() == Trade.Direction.BUY
+                    ? new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD, green)
+                    : new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD, red);
+            addPdfCell(table, t.getInstrument(), bold, dark, border);
+            addPdfCell(table, t.getTradeType()  != null ? t.getTradeType().name()  : "—", body, dark, border);
+            addPdfCell(table, t.getDirection()  != null ? t.getDirection().name()  : "—", df,   dark, border);
+            addPdfCell(table, t.getEntryPrice() != null ? "₹" + t.getEntryPrice().toPlainString() : "—", body, dark, border);
+            addPdfCell(table, pnlStr, pf, dark, border);
+            addPdfCell(table, t.getOutcomeTag() != null ? t.getOutcomeTag().name() : "—", body, dark, border);
         }
         doc.add(table);
 
-        Paragraph footer = new Paragraph("\nGenerated by MarketSaga · " + LocalDate.now().format(DATE_FMT)
-                + " · trading-journal-plum-gamma.vercel.app", smallGray);
-        footer.setAlignment(Element.ALIGN_CENTER); footer.setSpacingBefore(20);
+        // Discipline note
+        Paragraph disc = s.slBreaches == 0
+                ? new Paragraph("✓ Perfect discipline — no SL breaches this period.", tf)
+                : new Paragraph("⚠ " + s.slBreaches + " SL breach(es) detected.", new Font(Font.FontFamily.HELVETICA, 10, Font.BOLD, red));
+        disc.setSpacingBefore(12);
+        doc.add(disc);
+
+        // Footer
+        Paragraph footer = new Paragraph(
+                "\nGenerated by Market Saga · " + LocalDate.now().format(DATE_FMT) + " · marketsaga.site", small);
+        footer.setAlignment(Element.ALIGN_CENTER); footer.setSpacingBefore(24);
         doc.add(footer);
+
         doc.close();
         return baos.toByteArray();
     }
 
-    private void addCell(PdfPTable table, String text, Font font) {
+    private void addPdfCell(PdfPTable t, String text, Font font, BaseColor bg, BaseColor border) {
         PdfPCell cell = new PdfPCell(new Phrase(text, font));
-        cell.setBorderColor(new BaseColor(30,36,51)); cell.setBackgroundColor(new BaseColor(13,17,23)); cell.setPadding(8);
-        table.addCell(cell);
+        cell.setBorderColor(border); cell.setBackgroundColor(bg); cell.setPadding(8);
+        t.addCell(cell);
+    }
+
+    private WeekStats computeStats(List<Trade> closed) {
+        WeekStats s = new WeekStats();
+        s.totalTrades = closed.size();
+        s.wins   = (int) closed.stream().filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.PROFIT).count();
+        s.losses = (int) closed.stream().filter(t -> t.getOutcomeTag() == Trade.OutcomeTag.LOSS).count();
+        s.winRate = s.totalTrades > 0
+                ? BigDecimal.valueOf(s.wins * 100.0 / s.totalTrades).setScale(1, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        s.totalPnl  = closed.stream().map(Trade::getPnlAbsolute).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        s.bestTrade = closed.stream().map(Trade::getPnlAbsolute).filter(Objects::nonNull).max(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+        s.worstTrade= closed.stream().map(Trade::getPnlAbsolute).filter(Objects::nonNull).min(BigDecimal::compareTo).orElse(BigDecimal.ZERO);
+        s.avgRR     = closed.stream().map(Trade::getActualRR).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        long rc = closed.stream().map(Trade::getActualRR).filter(Objects::nonNull).count();
+        if (rc > 0) s.avgRR = s.avgRR.divide(BigDecimal.valueOf(rc), 2, RoundingMode.HALF_UP);
+        s.slBreaches = (int) closed.stream().filter(t -> !t.isSlRespected()).count();
+        return s;
     }
 
     static class WeekStats {
