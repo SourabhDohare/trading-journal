@@ -2,6 +2,7 @@ package com.tradingjournal.service;
 
 import com.itextpdf.text.*;
 import com.itextpdf.text.pdf.*;
+import com.itextpdf.text.pdf.draw.LineSeparator;
 import com.tradingjournal.model.Trade;
 import com.tradingjournal.model.User;
 import com.tradingjournal.repository.TradeRepository;
