@@ -5,20 +5,20 @@ import { FormsModule } from "@angular/forms";
 import { RouterLink, Router } from "@angular/router";
 import { HttpClient } from "@angular/common/http";
 import { environment } from "../../../environments/environment";
+import { AuthLogoComponent } from "../../shared/components/auth-logo/auth-logo.component";
 
 @Component({
   selector: "app-register",
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, AuthLogoComponent],
   template: `
     <div class="auth-shell">
       <div class="auth-card">
-        <app-auth-logo/>
+        <app-auth-logo />
 
-        <h1 class="auth-title">Create account</h1>
-        <p class="auth-sub">Start building your trading edge today.</p>
+        <h1 class="auth-title">Create your account</h1>
+        <p class="auth-sub">Start your trading journey today</p>
 
-        <!-- OAuth providers -->
         <div class="oauth-stack">
           <a [href]="googleUrl" class="oauth-btn google-btn">
             <svg width="18" height="18" viewBox="0 0 24 24">
@@ -117,16 +117,14 @@ import { environment } from "../../../environments/environment";
         <div class="error-box" *ngIf="error()">{{ error() }}</div>
 
         <button class="btn-primary" (click)="register()" [disabled]="loading()">
-          {{ loading() ? "Creating account..." : "Create account →" }}
+          <span *ngIf="!loading()">Create account →</span>
+          <span *ngIf="loading()" class="btn-loading"
+            ><span class="btn-spinner"></span> Creating...</span
+          >
         </button>
 
         <p class="switch-link">
           Already a trader? <a routerLink="/auth/login">Sign in</a>
-        </p>
-        <p class="terms">
-          By creating an account you agree to our
-          <a href="#" class="terms-a">Terms</a> and
-          <a href="#" class="terms-a">Privacy Policy</a>
         </p>
       </div>
     </div>
@@ -135,64 +133,52 @@ import { environment } from "../../../environments/environment";
     `
       .auth-shell {
         min-height: 100vh;
-        background: #0a0e1a;
+        background: #070b14;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 24px;
+        background-image: radial-gradient(
+          ellipse at 20% 50%,
+          rgba(13, 148, 136, 0.06) 0%,
+          transparent 60%
+        );
       }
       .auth-card {
         background: #0d1117;
         border: 1px solid #1e2433;
         border-radius: 20px;
-        padding: 48px 40px;
+        padding: 40px 36px;
         width: 100%;
-        max-width: 460px;
-      }
-      .brand {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        margin-bottom: 32px;
-      }
-      .brand-icon {
-        font-size: 22px;
-        color: #3b82f6;
-      }
-      .brand-name {
-        font-size: 18px;
-        font-weight: 900;
-        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        max-width: 440px;
+        box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
       }
       .auth-title {
-        font-size: 26px;
+        font-size: 22px;
         font-weight: 700;
         color: #e2e8f0;
-        margin: 0 0 6px;
+        margin: 0 0 4px;
         text-align: center;
       }
       .auth-sub {
-        font-size: 14px;
-        color: #64748b;
-        margin: 0 0 28px;
+        font-size: 13px;
+        color: #475569;
+        margin: 0 0 24px;
         text-align: center;
       }
       .oauth-stack {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 10px;
       }
       .oauth-btn {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 12px;
-        padding: 13px 20px;
+        gap: 10px;
+        padding: 11px 20px;
         border-radius: 10px;
-        font-size: 14px;
+        font-size: 13.5px;
         font-weight: 600;
         text-decoration: none;
         transition: all 0.15s;
@@ -207,18 +193,18 @@ import { environment } from "../../../environments/environment";
         background: #f9fafb;
       }
       .github-btn {
-        background: #24292e;
-        color: #fff;
-        border-color: #444d56;
+        background: #161b22;
+        color: #e6edf3;
+        border-color: #30363d;
       }
       .github-btn:hover {
-        background: #2f363d;
+        background: #1c2128;
       }
       .divider {
         display: flex;
         align-items: center;
         gap: 12px;
-        margin: 24px 0;
+        margin: 20px 0;
       }
       .divider::before,
       .divider::after {
@@ -228,14 +214,15 @@ import { environment } from "../../../environments/environment";
         background: #1e2433;
       }
       .divider span {
-        font-size: 12px;
-        color: #475569;
+        font-size: 11px;
+        color: #334155;
         white-space: nowrap;
+        letter-spacing: 0.5px;
       }
       .form-fields {
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 14px;
       }
       .field-row {
         display: grid;
@@ -245,39 +232,42 @@ import { environment } from "../../../environments/environment";
       .field {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 5px;
       }
       label {
-        font-size: 12px;
-        font-weight: 600;
-        color: #64748b;
+        font-size: 11px;
+        font-weight: 700;
+        color: #475569;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.7px;
       }
       .hint {
         font-size: 10px;
-        color: #475569;
+        color: #334155;
         text-transform: none;
         font-weight: 400;
         letter-spacing: 0;
       }
       .field-input {
-        background: #0a0e1a;
+        background: #070b14;
         border: 1px solid #1e2433;
         border-radius: 9px;
         color: #e2e8f0;
-        padding: 12px 14px;
+        padding: 11px 14px;
         font-size: 14px;
         outline: none;
-        transition: border-color 0.15s;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
         width: 100%;
         box-sizing: border-box;
       }
       .field-input:focus {
-        border-color: #3b82f6;
+        border-color: #0d9488;
+        box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
       }
       .field-input::placeholder {
-        color: #334155;
+        color: #2d3748;
       }
       .pw-wrap {
         position: relative;
@@ -294,7 +284,7 @@ import { environment } from "../../../environments/environment";
         border: none;
         cursor: pointer;
         font-size: 16px;
-        color: #64748b;
+        color: #475569;
         padding: 0;
       }
       .strength-wrap {
@@ -305,7 +295,7 @@ import { environment } from "../../../environments/environment";
       }
       .strength-track {
         flex: 1;
-        height: 4px;
+        height: 3px;
         background: #1e2433;
         border-radius: 2px;
         overflow: hidden;
@@ -322,10 +312,10 @@ import { environment } from "../../../environments/environment";
         background: #f59e0b;
       }
       .strength-fill.good {
-        background: #3b82f6;
+        background: #0d9488;
       }
       .strength-fill.strong {
-        background: #22c55e;
+        background: #5eead4;
       }
       .strength-label {
         font-size: 11px;
@@ -338,13 +328,13 @@ import { environment } from "../../../environments/environment";
         color: #f59e0b;
       }
       .strength-label.good {
-        color: #3b82f6;
+        color: #0d9488;
       }
       .strength-label.strong {
-        color: #22c55e;
+        color: #5eead4;
       }
       .error-box {
-        color: #ef4444;
+        color: #f87171;
         font-size: 13px;
         padding: 10px 14px;
         background: rgba(239, 68, 68, 0.08);
@@ -354,45 +344,58 @@ import { environment } from "../../../environments/environment";
       }
       .btn-primary {
         width: 100%;
-        padding: 14px;
+        padding: 13px;
         border-radius: 10px;
         border: none;
-        background: linear-gradient(135deg, #3b82f6, #6366f1);
+        background: linear-gradient(135deg, #0d9488, #0891b2);
         color: #fff;
-        font-size: 15px;
+        font-size: 14px;
         font-weight: 700;
         cursor: pointer;
-        margin-top: 16px;
+        margin-top: 14px;
         transition: all 0.15s;
+        box-shadow: 0 4px 14px rgba(13, 148, 136, 0.3);
       }
       .btn-primary:hover:not(:disabled) {
         transform: translateY(-1px);
       }
       .btn-primary:disabled {
-        opacity: 0.6;
+        opacity: 0.5;
         cursor: not-allowed;
         transform: none;
       }
+      .btn-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+      .btn-spinner {
+        width: 15px;
+        height: 15px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
       .switch-link {
         text-align: center;
-        font-size: 14px;
-        color: #64748b;
-        margin: 20px 0 0;
+        font-size: 13px;
+        color: #475569;
+        margin: 16px 0 0;
       }
       .switch-link a {
-        color: #3b82f6;
+        color: #0d9488;
         text-decoration: none;
         font-weight: 600;
       }
-      .terms {
-        text-align: center;
-        font-size: 11px;
-        color: #334155;
-        margin: 16px 0 0;
-      }
-      .terms-a {
-        color: #475569;
-        text-decoration: none;
+      .switch-link a:hover {
+        color: #5eead4;
       }
     `,
   ],
@@ -405,24 +408,18 @@ export class RegisterComponent {
   showPw = signal(false);
   loading = signal(false);
   error = signal("");
-
-  // FIX: use apiUrl (has /api/v1)
   readonly googleUrl = `${environment.apiUrl}/oauth2/authorization/google`;
   readonly githubUrl = `${environment.apiUrl}/oauth2/authorization/github`;
-
-  // FIX: inject HttpClient directly — needed for OTP register flow
   constructor(
     private http: HttpClient,
     private router: Router,
   ) {}
-
   togglePw(): void {
     this.showPw.update((v) => !v);
   }
   hasPassword(): boolean {
     return this.password.length > 0;
   }
-
   passwordStrength(): number {
     const p = this.password;
     if (!p) return 0;
@@ -439,15 +436,12 @@ export class RegisterComponent {
     return s < 30 ? "weak" : s < 60 ? "fair" : s < 80 ? "good" : "strong";
   }
   strengthLabel(): string {
-    const m: Record<string, string> = {
-      weak: "Weak",
-      fair: "Fair",
-      good: "Good",
-      strong: "Strong",
-    };
-    return m[this.strengthClass()] ?? "Weak";
+    return (
+      ({ weak: "Weak", fair: "Fair", good: "Good", strong: "Strong" } as any)[
+        this.strengthClass()
+      ] ?? "Weak"
+    );
   }
-
   register() {
     if (!this.firstName.trim() || !this.email.trim() || !this.password) {
       this.error.set("First name, email and password are required.");
@@ -459,10 +453,7 @@ export class RegisterComponent {
     }
     this.loading.set(true);
     this.error.set("");
-
     const email = this.email.trim().toLowerCase();
-
-    // FIX: explicit 'any' type on callbacks for strict TS
     this.http
       .post<any>(`${environment.apiUrl}/auth/register`, {
         firstName: this.firstName.trim(),
@@ -473,7 +464,6 @@ export class RegisterComponent {
       .subscribe({
         next: (_res: any) => {
           this.loading.set(false);
-          // Redirect to OTP verification — backend sent OTP to email
           this.router.navigate(["/auth/verify-email"], {
             queryParams: { email },
           });
