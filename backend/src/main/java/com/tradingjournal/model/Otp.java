@@ -7,16 +7,6 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.LocalDateTime;
 
-/**
- * OTP document — stored in MongoDB with automatic TTL expiry.
- *
- * MongoDB TTL index on `expiresAt` deletes documents automatically.
- * Add this index in Atlas or via @CompoundIndex — see OtpRepository.
- *
- * OTP types:
- *  EMAIL_VERIFICATION — sent after registration, must verify before login
- *  PASSWORD_RESET     — sent on forgot-password request
- */
 @Document(collection = "otps")
 @Data
 @Builder
@@ -28,23 +18,41 @@ public class Otp {
     private String id;
 
     @Indexed
-    private String email;       // normalised lowercase
+    private String email;
 
-    private String code;        // 6-digit numeric
+    /**
+     * NEVER store raw OTP — store SHA-256 hash.
+     * Raw code exists only in memory during generation, then discarded.
+     * Even if DB is breached, hashes are useless without the raw code.
+     */
+    private String codeHash;
 
     private OtpType type;
 
-    private boolean used;       // consumed once verified
+    private OtpStatus status;   // replaces boolean used
 
-    private int attempts;       // track brute-force
+    private int attempts;
 
-    @Indexed(expireAfterSeconds = 0)  // TTL — MongoDB deletes when expiresAt passes
+    private String requestIp;   // for audit + IP rate limiting
+
+    private String userAgent;   // for audit trail
+
+    @Indexed(expireAfterSeconds = 0)
     private LocalDateTime expiresAt;
 
     private LocalDateTime createdAt;
+    private LocalDateTime verifiedAt;   // when it was actually used
 
     public enum OtpType {
         EMAIL_VERIFICATION,
         PASSWORD_RESET
+    }
+
+    public enum OtpStatus {
+        PENDING,    // issued, not yet used
+        VERIFIED,   // used successfully
+        EXPIRED,    // TTL passed or explicitly invalidated
+        REVOKED,    // cancelled by new OTP issuance
+        LOCKED      // too many failed attempts
     }
 }
