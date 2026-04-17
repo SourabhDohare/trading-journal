@@ -5,6 +5,7 @@ import com.tradingjournal.security.OAuth2SuccessHandler;
 import com.tradingjournal.security.CustomOAuth2UserService;
 import com.tradingjournal.security.UserPrincipal;
 import com.tradingjournal.repository.UserRepository;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -70,21 +71,38 @@ public class SecurityConfig {
                     "/api/v1/auth/**",
                     "/oauth2/**",                // Spring's OAuth2 authorization redirect
                     "/login/oauth2/**",           // Spring's OAuth2 callback
-                    "/contact",                  // ← Public contact form (no auth required)
-                    "/feedback",                 // ← Public feedback form (no auth required)
+                    "/contact",                  // Public contact form
+                    "/feedback",                 // Public feedback form
                     "/swagger-ui/**",
                     "/api-docs/**",
                     "/actuator/health"
                 ).permitAll()
                 .anyRequest().authenticated()
             )
-            // ── OAuth2 social login (Google + GitHub) ─────────────────────────────
+            // ── Exception handling — NEVER show Spring's default /login page ──────────
+            // For unauthenticated API requests: return 401 JSON response
+            // This prevents Spring from redirecting to its default white-label login page
+            .exceptionHandling(e -> e
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setContentType("application/json");
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write(
+                        "{\"status\":401,\"error\":\"Unauthorized\"," +
+                        "\"message\":\"Authentication required.\"}"
+                    );
+                })
+            )
+            // ── OAuth2 social login (Google + GitHub) ─────────────────────────────────
+            // loginPage() — tells Spring to NEVER redirect to its own /login page.
+            // If OAuth2 state is lost (cross-site session issue), Spring will redirect
+            // to the Angular login page instead of the Spring white-label page.
             .oauth2Login(oauth -> oauth
+                .loginPage("https://marketsaga.site/auth/login")
                 .userInfoEndpoint(u -> u.userService(customOAuth2UserService))
                 .successHandler(oAuth2SuccessHandler)
                 .failureUrl("https://marketsaga.site/auth/login?error=oauth_failed")
             )
-            // ── JWT filter for API requests ───────────────────────────────────────
+            // ── JWT filter for API requests ───────────────────────────────────────────
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
