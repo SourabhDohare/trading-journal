@@ -21,27 +21,29 @@ public class Otp {
     private String email;
 
     /**
-     * NEVER store raw OTP — store SHA-256 hash.
-     * Raw code exists only in memory during generation, then discarded.
-     * Even if DB is breached, hashes are useless without the raw code.
+     * SHA-256 hash of the 6-digit code.
+     * Raw code is never persisted — exists only in memory during generation
+     * then sent to email and discarded.
+     * Even if MongoDB is breached, hashes are useless without the raw code.
      */
     private String codeHash;
 
     private OtpType type;
 
-    private OtpStatus status;   // replaces boolean used
+    private OtpStatus status;
 
     private int attempts;
 
-    private String requestIp;   // for audit + IP rate limiting
+    private String requestIp;
 
-    private String userAgent;   // for audit trail
+    private String userAgent;
 
     @Indexed(expireAfterSeconds = 0)
     private LocalDateTime expiresAt;
 
     private LocalDateTime createdAt;
-    private LocalDateTime verifiedAt;   // when it was actually used
+
+    private LocalDateTime verifiedAt;
 
     public enum OtpType {
         EMAIL_VERIFICATION,
@@ -51,7 +53,7 @@ public class Otp {
     public enum OtpStatus {
         PENDING,    // issued, not yet used
         VERIFIED,   // used successfully
-        EXPIRED,    // TTL passed or explicitly invalidated
+        EXPIRED,    // TTL passed or explicitly expired
         REVOKED,    // cancelled by new OTP issuance
         LOCKED      // too many failed attempts
     }

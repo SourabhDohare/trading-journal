@@ -29,14 +29,14 @@ public class OtpCleanupService {
         LocalDateTime now      = LocalDateTime.now();
         LocalDateTime auditAge = now.minusHours(24);
 
-        // Pass 1: expired PENDING OTPs
+        // Pass 1: expired PENDING OTPs — backup to MongoDB TTL index
         List<Otp> expiredPending = otpRepository.findExpiredPending(now);
         if (!expiredPending.isEmpty()) {
             otpRepository.deleteAll(expiredPending);
             log.info("[OTP_CLEANUP] expired_pending_deleted={}", expiredPending.size());
         }
 
-        // Pass 2: terminal OTPs outside audit window
+        // Pass 2: terminal OTPs outside the 24h audit retention window
         List<Otp> terminal = otpRepository.findTerminalOlderThan(auditAge);
         if (!terminal.isEmpty()) {
             otpRepository.deleteAll(terminal);
