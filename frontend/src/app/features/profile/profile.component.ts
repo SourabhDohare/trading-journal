@@ -1091,45 +1091,50 @@ export class ProfileComponent implements OnInit {
 
   // ── Toggle auto-save — fires immediately, no Save button needed ───────────
   onToggleChange(
-    field: "strictMode" | "emailNotifications" | "weeklyReportEmail",
-    event: Event,
-  ) {
-    const checked = (event.target as HTMLInputElement).checked;
-    this.form[field] = checked; // update local state instantly
-    this.toggleSaving.set(true);
+  field: "strictMode" | "emailNotifications" | "weeklyReportEmail",
+  event: Event,
+) {
+  const checked = (event.target as HTMLInputElement).checked;
+  this.form[field] = checked;
 
-    this.http
-      .put<any>(`${environment.apiUrl}/profile`, { [field]: checked })
-      .subscribe({
-        next: (updated) => {
-          this.profile.set(updated);
-          // Re-sync exact values from backend to keep form in sync
-          this.form.strictMode = updated.strictMode === true;
-          this.form.emailNotifications = updated.emailNotifications === true;
-          this.form.weeklyReportEmail = updated.weeklyReportEmail === true;
-          this.toggleSaving.set(false);
-          this.showToast(
-            field === "strictMode"
-              ? checked
-                ? "Strict Mode ON"
-                : "Strict Mode OFF"
-              : field === "emailNotifications"
-                ? checked
-                  ? "Email alerts enabled"
-                  : "Email alerts disabled"
-                : checked
-                  ? "Weekly report enabled"
-                  : "Weekly report disabled",
-            "success",
-          );
-        },
-        error: () => {
-          this.form[field] = !checked; // revert on failure
-          this.toggleSaving.set(false);
-          this.showToast("Failed to save setting. Try again.", "error");
-        },
-      });
-  }
+  // ── INSTANT UI UPDATE — no page refresh needed ─────────────────
+  this.authService.updateLocalUser({ [field]: checked });
+
+  this.toggleSaving.set(true);
+
+  this.http
+    .put<any>(`${environment.apiUrl}/profile`, { [field]: checked })
+    .subscribe({
+      next: (updated) => {
+        this.profile.set(updated);
+        this.form.strictMode = updated.strictMode === true;
+        this.form.emailNotifications = updated.emailNotifications === true;
+        this.form.weeklyReportEmail = updated.weeklyReportEmail === true;
+        // Sync auth signal with confirmed backend values
+        this.authService.updateLocalUser({
+          strictMode:          updated.strictMode === true,
+          emailNotifications:  updated.emailNotifications === true,
+          weeklyReportEmail:   updated.weeklyReportEmail === true,
+        });
+        this.toggleSaving.set(false);
+        this.showToast(
+          field === "strictMode"
+            ? checked ? "Strict Mode ON" : "Strict Mode OFF"
+            : field === "emailNotifications"
+              ? checked ? "Email alerts enabled" : "Email alerts disabled"
+              : checked ? "Weekly report enabled" : "Weekly report disabled",
+          "success",
+        );
+      },
+      error: () => {
+        // Revert both form and auth signal
+        this.form[field] = !checked;
+        this.authService.updateLocalUser({ [field]: !checked });
+        this.toggleSaving.set(false);
+        this.showToast("Failed to save setting. Try again.", "error");
+      },
+    });
+}
 
   // ── Save full profile ─────────────────────────────────────────────────────
   save() {
