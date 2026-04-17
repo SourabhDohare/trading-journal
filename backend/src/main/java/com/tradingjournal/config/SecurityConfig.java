@@ -25,6 +25,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -44,6 +47,9 @@ public class SecurityConfig {
 
     @Value("${app.cors.allowed-origins}")  // ← kept — reads from Render env var
     private String allowedOrigins;
+
+    private static final String OAUTH2_FAILURE_URL =
+            "https://marketsaga.site/auth/login?error=oauth_failed";
 
     // @Lazy on JwtAuthFilter keeps your existing circular-dependency fix intact
     public SecurityConfig(UserRepository userRepository,
@@ -79,30 +85,44 @@ public class SecurityConfig {
                 ).permitAll()
                 .anyRequest().authenticated()
             )
-            // ── Exception handling — NEVER show Spring's default /login page ──────────
-            // For unauthenticated API requests: return 401 JSON response
-            // This prevents Spring from redirecting to its default white-label login page
+            // ── Exception handling ────────────────────────────────────────────────
+            // Only apply JSON 401 to actual API requests.
+            // OAuth2 browser flows (/login/oauth2/**, /oauth2/**) must NEVER get
+            // JSON 401 — they need a redirect to Angular's login page instead.
             .exceptionHandling(e -> e
-                .authenticationEntryPoint((request, response, authException) -> {
-                    response.setContentType("application/json");
-                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                    response.getWriter().write(
-                        "{\"status\":401,\"error\":\"Unauthorized\"," +
-                        "\"message\":\"Authentication required.\"}"
-                    );
-                })
+                .defaultAuthenticationEntryPointFor(
+                    // For OAuth2 browser flows: redirect to Angular login page
+                    (request, response, ex) ->
+                        response.sendRedirect(OAUTH2_FAILURE_URL),
+                    // Matches OAuth2 paths — browser-based, not API
+                    new OrRequestMatcher(
+                        new AntPathRequestMatcher("/login/oauth2/**"),
+                        new AntPathRequestMatcher("/oauth2/**")
+                    )
+                )
+                .defaultAuthenticationEntryPointFor(
+                    // For all other paths (JWT API calls): return JSON 401
+                    (request, response, ex) -> {
+                        response.setContentType("application/json");
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.getWriter().write(
+                            "{\"status\":401,\"error\":\"Unauthorized\"," +
+                            "\"message\":\"Authentication required.\"}"
+                        );
+                    },
+                    // Matches everything else (API endpoints)
+                    request -> true
+                )
             )
-            // ── OAuth2 social login (Google + GitHub) ─────────────────────────────────
-            // loginPage() — tells Spring to NEVER redirect to its own /login page.
-            // If OAuth2 state is lost (cross-site session issue), Spring will redirect
-            // to the Angular login page instead of the Spring white-label page.
+            // ── OAuth2 social login (Google + GitHub) ─────────────────────────────
+            // loginPage() — tells Spring NEVER to show its white-label /login page
             .oauth2Login(oauth -> oauth
                 .loginPage("https://marketsaga.site/auth/login")
                 .userInfoEndpoint(u -> u.userService(customOAuth2UserService))
                 .successHandler(oAuth2SuccessHandler)
-                .failureUrl("https://marketsaga.site/auth/login?error=oauth_failed")
+                .failureUrl(OAUTH2_FAILURE_URL)
             )
-            // ── JWT filter for API requests ───────────────────────────────────────────
+            // ── JWT filter for API requests ───────────────────────────────────────
             .authenticationProvider(authenticationProvider())
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
             .build();
