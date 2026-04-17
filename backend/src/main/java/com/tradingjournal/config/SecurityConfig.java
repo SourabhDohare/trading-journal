@@ -70,6 +70,8 @@ public class SecurityConfig {
                     "/api/v1/auth/**",
                     "/oauth2/**",                // Spring's OAuth2 authorization redirect
                     "/login/oauth2/**",           // Spring's OAuth2 callback
+                    "/contact",                  // ← Public contact form (no auth required)
+                    "/feedback",                 // ← Public feedback form (no auth required)
                     "/swagger-ui/**",
                     "/api-docs/**",
                     "/actuator/health"
@@ -80,7 +82,7 @@ public class SecurityConfig {
             .oauth2Login(oauth -> oauth
                 .userInfoEndpoint(u -> u.userService(customOAuth2UserService))
                 .successHandler(oAuth2SuccessHandler)
-               .failureUrl("https://marketsaga.site/auth/login?error=oauth_failed")
+                .failureUrl("https://marketsaga.site/auth/login?error=oauth_failed")
             )
             // ── JWT filter for API requests ───────────────────────────────────────
             .authenticationProvider(authenticationProvider())
