@@ -976,7 +976,7 @@ export class ProfileComponent implements OnInit {
   toastType = signal<"success" | "error">("success");
   toastVisible = signal(false);
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
-
+  private avatarChanged = false;
   readonly Math = Math;
 
   form = {
@@ -1083,58 +1083,69 @@ export class ProfileComponent implements OnInit {
     this.form.tradingGoal = p.tradingGoal || "";
     this.form.biggestWeakness = p.biggestWeakness || "";
     this.form.whyImproving = p.whyImproving || "";
-    // ── Exact boolean from backend — no default override ──────────────────
     this.form.strictMode = p.strictMode === true;
     this.form.emailNotifications = p.emailNotifications === true;
     this.form.weeklyReportEmail = p.weeklyReportEmail === true;
+
+    // ── Restore avatar preview from backend data ──────────────────────
+    this.form.avatarBase64 = ""; // always blank in form — managed via avatarChanged flag
+    if (p.avatarBase64) {
+      this.avatarPreview.set(p.avatarBase64); // ← show existing avatar on load
+    }
   }
 
   // ── Toggle auto-save — fires immediately, no Save button needed ───────────
   onToggleChange(
-  field: "strictMode" | "emailNotifications" | "weeklyReportEmail",
-  event: Event,
-) {
-  const checked = (event.target as HTMLInputElement).checked;
-  this.form[field] = checked;
+    field: "strictMode" | "emailNotifications" | "weeklyReportEmail",
+    event: Event,
+  ) {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.form[field] = checked;
 
-  // ── INSTANT UI UPDATE — no page refresh needed ─────────────────
-  this.authService.updateLocalUser({ [field]: checked });
+    // ── INSTANT UI UPDATE — no page refresh needed ─────────────────
+    this.authService.updateLocalUser({ [field]: checked });
 
-  this.toggleSaving.set(true);
+    this.toggleSaving.set(true);
 
-  this.http
-    .put<any>(`${environment.apiUrl}/profile`, { [field]: checked })
-    .subscribe({
-      next: (updated) => {
-        this.profile.set(updated);
-        this.form.strictMode = updated.strictMode === true;
-        this.form.emailNotifications = updated.emailNotifications === true;
-        this.form.weeklyReportEmail = updated.weeklyReportEmail === true;
-        // Sync auth signal with confirmed backend values
-        this.authService.updateLocalUser({
-          strictMode:          updated.strictMode === true,
-          emailNotifications:  updated.emailNotifications === true,
-          weeklyReportEmail:   updated.weeklyReportEmail === true,
-        });
-        this.toggleSaving.set(false);
-        this.showToast(
-          field === "strictMode"
-            ? checked ? "Strict Mode ON" : "Strict Mode OFF"
-            : field === "emailNotifications"
-              ? checked ? "Email alerts enabled" : "Email alerts disabled"
-              : checked ? "Weekly report enabled" : "Weekly report disabled",
-          "success",
-        );
-      },
-      error: () => {
-        // Revert both form and auth signal
-        this.form[field] = !checked;
-        this.authService.updateLocalUser({ [field]: !checked });
-        this.toggleSaving.set(false);
-        this.showToast("Failed to save setting. Try again.", "error");
-      },
-    });
-}
+    this.http
+      .put<any>(`${environment.apiUrl}/profile`, { [field]: checked })
+      .subscribe({
+        next: (updated) => {
+          this.profile.set(updated);
+          this.form.strictMode = updated.strictMode === true;
+          this.form.emailNotifications = updated.emailNotifications === true;
+          this.form.weeklyReportEmail = updated.weeklyReportEmail === true;
+          // Sync auth signal with confirmed backend values
+          this.authService.updateLocalUser({
+            strictMode: updated.strictMode === true,
+            emailNotifications: updated.emailNotifications === true,
+            weeklyReportEmail: updated.weeklyReportEmail === true,
+          });
+          this.toggleSaving.set(false);
+          this.showToast(
+            field === "strictMode"
+              ? checked
+                ? "Strict Mode ON"
+                : "Strict Mode OFF"
+              : field === "emailNotifications"
+                ? checked
+                  ? "Email alerts enabled"
+                  : "Email alerts disabled"
+                : checked
+                  ? "Weekly report enabled"
+                  : "Weekly report disabled",
+            "success",
+          );
+        },
+        error: () => {
+          // Revert both form and auth signal
+          this.form[field] = !checked;
+          this.authService.updateLocalUser({ [field]: !checked });
+          this.toggleSaving.set(false);
+          this.showToast("Failed to save setting. Try again.", "error");
+        },
+      });
+  }
 
   // ── Save full profile ─────────────────────────────────────────────────────
   save() {
@@ -1142,30 +1153,41 @@ export class ProfileComponent implements OnInit {
     this.saving.set(true);
     this.saveError.set("");
 
-    this.http
-      .put<any>(`${environment.apiUrl}/profile`, { ...this.form })
-      .subscribe({
-        next: (updated) => {
-          this.profile.set(updated);
-          this.populateForm(updated);
-          this.saving.set(false);
-          this.authService.updateLocalUser({
-            displayName:
-              updated.displayName || updated.fullName || updated.email,
-            fullName: updated.fullName,
-            avatarBase64: updated.avatarBase64 || undefined,
-            planType: updated.planType,
-          });
-          this.showToast("Profile saved successfully ✓", "success");
-        },
-        error: (err) => {
-          this.saving.set(false);
-          const msg =
-            err?.error?.message || "Failed to save. Please try again.";
-          this.saveError.set(msg);
-          this.showToast(msg, "error");
-        },
-      });
+    // ── Build payload — only include avatarBase64 if user changed it ──
+    const { avatarBase64, ...rest } = this.form;
+    const payload = this.avatarChanged ? { ...this.form } : { ...rest }; // avatarBase64 excluded — keeps DB value intact
+
+    this.http.put<any>(`${environment.apiUrl}/profile`, payload).subscribe({
+      next: (updated) => {
+        this.profile.set(updated);
+        this.populateForm(updated);
+        this.saving.set(false);
+        this.avatarChanged = false; // ← RESET FLAG
+
+        // Sync auth signal — preserve avatar already in localStorage if
+        // backend doesn't echo it back (e.g. when avatar wasn't changed)
+        const currentAvatar = this.authService.currentUser() as any;
+        this.authService.updateLocalUser({
+          displayName: updated.displayName || updated.fullName || updated.email,
+          fullName: updated.fullName,
+          avatarBase64: updated.avatarBase64
+            ? updated.avatarBase64 // backend has it
+            : currentAvatar?.avatarBase64 || undefined, // keep existing
+          planType: updated.planType,
+          strictMode: updated.strictMode === true,
+          emailNotifications: updated.emailNotifications === true,
+          weeklyReportEmail: updated.weeklyReportEmail === true,
+        });
+
+        this.showToast("Profile saved successfully ✓", "success");
+      },
+      error: (err) => {
+        this.saving.set(false);
+        const msg = err?.error?.message || "Failed to save. Please try again.";
+        this.saveError.set(msg);
+        this.showToast(msg, "error");
+      },
+    });
   }
 
   // ── Avatar ────────────────────────────────────────────────────────────────
@@ -1185,6 +1207,7 @@ export class ProfileComponent implements OnInit {
       const base64 = e.target?.result as string;
       this.avatarPreview.set(base64);
       this.form.avatarBase64 = base64;
+      this.avatarChanged = true; // ← ADD THIS
       this.authService.updateLocalUser({ avatarBase64: base64 });
     };
     reader.readAsDataURL(file);
