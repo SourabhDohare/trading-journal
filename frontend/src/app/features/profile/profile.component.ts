@@ -78,7 +78,19 @@ interface UserProfile {
               <div *ngIf="!avatarPreview()" class="avatar-initials">
                 {{ initials() }}
               </div>
-              <div class="avatar-overlay"><span>📷 Change</span></div>
+
+              <!-- Normal hover overlay -->
+              <div class="avatar-overlay" *ngIf="!avatarSaving()">
+                <span>📷 Change</span>
+              </div>
+
+              <!-- Saving spinner overlay -->
+              <div
+                class="avatar-overlay avatar-saving-overlay"
+                *ngIf="avatarSaving()"
+              >
+                <span class="avatar-spinner"></span>
+              </div>
             </div>
             <input
               type="file"
@@ -472,6 +484,23 @@ interface UserProfile {
   `,
   styles: [
     `
+      .avatar-saving-overlay {
+        opacity: 1 !important;
+        background: rgba(0, 0, 0, 0.65);
+      }
+      .avatar-spinner {
+        width: 22px;
+        height: 22px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-top-color: #5eead4;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
       .page {
         padding: 32px;
         max-width: 1300px;
@@ -977,6 +1006,7 @@ export class ProfileComponent implements OnInit {
   toastVisible = signal(false);
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private avatarChanged = false;
+  avatarSaving = signal(false);
   readonly Math = Math;
 
   form = {
@@ -1197,23 +1227,55 @@ export class ProfileComponent implements OnInit {
 
   // ── Avatar ────────────────────────────────────────────────────────────────
   triggerAvatarUpload() {
+    if (this.avatarSaving()) return; // prevent double-click while saving
     (document.querySelector('input[type="file"]') as HTMLInputElement)?.click();
   }
 
   onAvatarSelected(event: Event) {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!file) return;
+
+    // Reset input so same file can be re-selected later
+    (event.target as HTMLInputElement).value = "";
+
     if (file.size > 200 * 1024) {
       this.showToast("Avatar must be under 200KB.", "error");
       return;
     }
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const base64 = e.target?.result as string;
+
+      // ── Show preview instantly ────────────────────────────────────────
       this.avatarPreview.set(base64);
-      this.form.avatarBase64 = base64;
-      this.avatarChanged = true; // ← mark as changed
-      this.authService.updateLocalUser({ avatarBase64: base64 }); // instant sidebar update
+      this.avatarSaving.set(true);
+
+      // ── Auto-save ONLY the avatar — no other fields touched ──────────
+      this.http
+        .put<any>(`${environment.apiUrl}/profile`, { avatarBase64: base64 })
+        .subscribe({
+          next: (updated) => {
+            this.avatarSaving.set(false);
+
+            // Update auth signal → sidebar updates instantly
+            this.authService.updateLocalUser({
+              avatarBase64: updated.avatarBase64 || base64,
+            });
+
+            // Keep profile signal fresh
+            this.profile.set(updated);
+
+            this.showToast("Avatar saved ✓", "success");
+          },
+          error: () => {
+            this.avatarSaving.set(false);
+            // Revert preview on failure
+            const prev = (this.authService.currentUser() as any)?.avatarBase64;
+            this.avatarPreview.set(prev || null);
+            this.showToast("Failed to save avatar. Try again.", "error");
+          },
+        });
     };
     reader.readAsDataURL(file);
   }
