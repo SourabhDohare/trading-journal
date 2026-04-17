@@ -1,5 +1,6 @@
 package com.tradingjournal.service;
 
+import com.tradingjournal.model.Otp;
 import com.tradingjournal.repository.OtpRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -7,6 +8,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -16,22 +18,29 @@ public class OtpCleanupService {
     private final OtpRepository otpRepository;
 
     /**
-     * Every 30 minutes:
-     *  1. Expire any PENDING OTPs whose expiresAt passed (TTL backup)
-     *  2. Delete terminal OTPs (VERIFIED/REVOKED/LOCKED/EXPIRED) older than 24h
-     *     — 24h gives audit trail for security investigations
+     * Runs every 30 minutes.
+     *
+     * Pass 1 — delete PENDING OTPs whose expiresAt has passed (TTL index backup).
+     * Pass 2 — delete terminal OTPs (VERIFIED / REVOKED / LOCKED / EXPIRED)
+     *           older than 24 hours (audit retention window).
      */
     @Scheduled(cron = "0 */30 * * * *")
     public void cleanupOtps() {
         LocalDateTime now      = LocalDateTime.now();
         LocalDateTime auditAge = now.minusHours(24);
 
-        long expiredDeleted  = otpRepository.deleteAllExpiredPending(now);
-        long terminalDeleted = otpRepository.deleteAllTerminalOlderThan(auditAge);
+        // Pass 1: expired PENDING OTPs
+        List<Otp> expiredPending = otpRepository.findExpiredPending(now);
+        if (!expiredPending.isEmpty()) {
+            otpRepository.deleteAll(expiredPending);
+            log.info("[OTP_CLEANUP] expired_pending_deleted={}", expiredPending.size());
+        }
 
-        if (expiredDeleted > 0 || terminalDeleted > 0) {
-            log.info("[OTP_CLEANUP] expired_pending={} terminal_purged={}",
-                    expiredDeleted, terminalDeleted);
+        // Pass 2: terminal OTPs outside audit window
+        List<Otp> terminal = otpRepository.findTerminalOlderThan(auditAge);
+        if (!terminal.isEmpty()) {
+            otpRepository.deleteAll(terminal);
+            log.info("[OTP_CLEANUP] terminal_purged={}", terminal.size());
         }
     }
 }
