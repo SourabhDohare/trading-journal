@@ -1088,8 +1088,8 @@ export class ProfileComponent implements OnInit {
     this.form.weeklyReportEmail = p.weeklyReportEmail === true;
 
     // ── Restore avatar preview from backend data ──────────────────────
-    this.form.avatarBase64 = ""; // always blank in form — managed via avatarChanged flag
-    if (p.avatarBase64) {
+    this.form.avatarBase64 = ""; // always blank in form payload unless user picks new image
+    if (p.avatarBase64 && p.avatarBase64.length > 0) {
       this.avatarPreview.set(p.avatarBase64); // ← show existing avatar on load
     }
   }
@@ -1153,26 +1153,31 @@ export class ProfileComponent implements OnInit {
     this.saving.set(true);
     this.saveError.set("");
 
-    // ── Build payload — only include avatarBase64 if user changed it ──
-    const { avatarBase64, ...rest } = this.form;
-    const payload = this.avatarChanged ? { ...this.form } : { ...rest }; // avatarBase64 excluded — keeps DB value intact
+    // ── Only send avatarBase64 if user explicitly picked a new image ──────────
+    // This prevents "" from overwriting a valid saved avatar in the DB
+    const { avatarBase64, ...restOfForm } = this.form;
+    const payload = this.avatarChanged
+      ? { ...this.form } // include new avatar
+      : { ...restOfForm }; // exclude — backend keeps existing DB value
 
     this.http.put<any>(`${environment.apiUrl}/profile`, payload).subscribe({
       next: (updated) => {
         this.profile.set(updated);
         this.populateForm(updated);
         this.saving.set(false);
-        this.avatarChanged = false; // ← RESET FLAG
+        this.avatarChanged = false; // ← reset flag after save
 
-        // Sync auth signal — preserve avatar already in localStorage if
-        // backend doesn't echo it back (e.g. when avatar wasn't changed)
-        const currentAvatar = this.authService.currentUser() as any;
+        // Preserve avatar in auth signal — if backend echoes it use that,
+        // otherwise keep what's already in localStorage (current session value)
+        const existingAvatar = (this.authService.currentUser() as any)
+          ?.avatarBase64;
         this.authService.updateLocalUser({
           displayName: updated.displayName || updated.fullName || updated.email,
           fullName: updated.fullName,
-          avatarBase64: updated.avatarBase64
-            ? updated.avatarBase64 // backend has it
-            : currentAvatar?.avatarBase64 || undefined, // keep existing
+          avatarBase64:
+            updated.avatarBase64 && updated.avatarBase64.length > 0
+              ? updated.avatarBase64 // fresh from backend
+              : existingAvatar || undefined, // keep current
           planType: updated.planType,
           strictMode: updated.strictMode === true,
           emailNotifications: updated.emailNotifications === true,
@@ -1207,8 +1212,8 @@ export class ProfileComponent implements OnInit {
       const base64 = e.target?.result as string;
       this.avatarPreview.set(base64);
       this.form.avatarBase64 = base64;
-      this.avatarChanged = true; // ← ADD THIS
-      this.authService.updateLocalUser({ avatarBase64: base64 });
+      this.avatarChanged = true; // ← mark as changed
+      this.authService.updateLocalUser({ avatarBase64: base64 }); // instant sidebar update
     };
     reader.readAsDataURL(file);
   }
