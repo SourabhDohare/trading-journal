@@ -6,6 +6,10 @@ import com.tradingjournal.repository.OtpRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -15,19 +19,21 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class OtpService {
 
-    private final OtpRepository  otpRepository;
+    private final OtpRepository otpRepository;
     private final EmailService   emailService;
+    private final MongoTemplate  mongoTemplate;   // ← replaces @Update annotation
 
     private static final int OTP_EXPIRY_MINUTES  = 10;
     private static final int MAX_ATTEMPTS        = 3;
     private static final int RESEND_COOLDOWN_S   = 60;
-    private static final int MAX_ACTIVE_PER_TYPE = 3; // IP rate limit
+    private static final int MAX_ACTIVE_PER_IP   = 3;
     private static final SecureRandom RANDOM     = new SecureRandom();
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -55,28 +61,28 @@ public class OtpService {
                 .orElseThrow(() -> new BadRequestException(
                         "No active OTP found. Please request a new one."));
 
-        // ── Expiry check ──────────────────────────────────────────────────────
+        // Expiry check
         if (otp.getExpiresAt().isBefore(LocalDateTime.now())) {
-            revokeOtp(otp, Otp.OtpStatus.EXPIRED);
+            markStatus(otp, Otp.OtpStatus.EXPIRED);
             audit(normEmail, type, "VERIFY_FAIL", "OTP expired");
             throw new BadRequestException("OTP has expired. Please request a new one.");
         }
 
-        // ── Locked check ──────────────────────────────────────────────────────
+        // Locked check
         if (otp.getStatus() == Otp.OtpStatus.LOCKED) {
-            audit(normEmail, type, "VERIFY_FAIL", "Account locked — too many attempts");
+            audit(normEmail, type, "VERIFY_FAIL", "Locked — too many attempts");
             throw new BadRequestException(
                     "Too many incorrect attempts. Please request a new OTP.");
         }
 
-        // ── Hash comparison — NEVER compare raw codes ─────────────────────────
+        // Hash comparison — never compare raw codes
         String submittedHash = sha256(rawCode.trim());
         if (!submittedHash.equals(otp.getCodeHash())) {
             int newAttempts = otp.getAttempts() + 1;
             otp.setAttempts(newAttempts);
 
             if (newAttempts >= MAX_ATTEMPTS) {
-                revokeOtp(otp, Otp.OtpStatus.LOCKED);
+                markStatus(otp, Otp.OtpStatus.LOCKED);
                 audit(normEmail, type, "VERIFY_FAIL",
                         "Locked after " + newAttempts + " failed attempts");
                 throw new BadRequestException(
@@ -85,18 +91,15 @@ public class OtpService {
 
             otpRepository.save(otp);
             int remaining = MAX_ATTEMPTS - newAttempts;
-            audit(normEmail, type, "VERIFY_FAIL",
-                    "Wrong code — " + remaining + " attempt(s) remaining");
             throw new BadRequestException(
                     "Incorrect OTP. " + remaining + " attempt(s) remaining.");
         }
 
-        // ── Success ───────────────────────────────────────────────────────────
+        // Success
         otp.setStatus(Otp.OtpStatus.VERIFIED);
         otp.setVerifiedAt(LocalDateTime.now());
         otpRepository.save(otp);
-
-        audit(normEmail, type, "VERIFY_SUCCESS", "OTP verified successfully");
+        audit(normEmail, type, "VERIFY_SUCCESS", "OTP verified");
         log.info("OTP verified [{}] for: {}", type, normEmail);
     }
 
@@ -107,7 +110,7 @@ public class OtpService {
         String normEmail = normalize(email);
         String requestIp = resolveClientIp();
 
-        // ── Cooldown check — prevent spam ─────────────────────────────────────
+        // Cooldown check
         otpRepository
                 .findTopByEmailAndTypeAndStatusOrderByCreatedAtDesc(
                         normEmail, type, Otp.OtpStatus.PENDING)
@@ -122,27 +125,26 @@ public class OtpService {
                     }
                 });
 
-        // ── IP rate limit — max 3 active OTPs from same IP per type ───────────
+        // IP rate limit
         long activeFromIp = otpRepository.countByRequestIpAndTypeAndStatus(
                 requestIp, type, Otp.OtpStatus.PENDING);
-        if (activeFromIp >= MAX_ACTIVE_PER_TYPE) {
-            audit(normEmail, type, "RATE_LIMITED",
-                    "IP " + requestIp + " exceeded max active OTPs");
+        if (activeFromIp >= MAX_ACTIVE_PER_IP) {
+            audit(normEmail, type, "RATE_LIMITED", "IP " + requestIp + " exceeded limit");
             throw new BadRequestException(
                     "Too many OTP requests from this device. Please wait and try again.");
         }
 
-        // ── Revoke all previous PENDING OTPs for this email+type ─────────────
-        otpRepository.revokeAllPendingByEmailAndType(normEmail, type);
+        // Revoke all previous PENDING OTPs — using MongoTemplate (no @Update annotation needed)
+        revokeAllPending(normEmail, type);
 
-        // ── Generate — store HASH only, raw code goes only to email ──────────
+        // Generate — store HASH only
         String rawCode  = generateCode();
         String codeHash = sha256(rawCode);
         LocalDateTime now = LocalDateTime.now();
 
         Otp otp = Otp.builder()
                 .email(normEmail)
-                .codeHash(codeHash)        // hash stored, raw discarded after email
+                .codeHash(codeHash)
                 .type(type)
                 .status(Otp.OtpStatus.PENDING)
                 .attempts(0)
@@ -153,33 +155,41 @@ public class OtpService {
                 .build();
 
         otpRepository.save(otp);
-        audit(normEmail, type, "ISSUED", "OTP issued to IP: " + requestIp);
-        log.info("OTP issued [{}] for: {} | IP: {}", type, normEmail, requestIp);
+        audit(normEmail, type, "ISSUED", "IP: " + requestIp);
 
-        // ── Send email — raw code goes here, then gone forever ────────────────
+        // Send email — raw code goes here, then out of scope forever
         try {
             emailService.sendHtmlEmailSync(normEmail, subject,
                     buildEmailHtml(rawCode, actionLabel));
-            log.info("OTP email sent to: {}", normEmail);
         } catch (Exception e) {
-            // Development fallback — logs raw code so you can test without Resend
             log.warn("⚠ OTP email FAILED for {} — {}", normEmail, e.getMessage());
-            log.warn("⚠ DEV ONLY — OTP for manual testing: {} ({}min)",
-                    rawCode, OTP_EXPIRY_MINUTES);
+            log.warn("⚠ DEV — OTP: {} ({}min)", rawCode, OTP_EXPIRY_MINUTES);
         }
-        // rawCode is now out of scope — GC'd, never persisted
+    }
+
+    // ── MongoTemplate ops (replaces @Update annotation entirely) ─────────────
+
+    /**
+     * Marks all PENDING OTPs for email+type as REVOKED.
+     * Uses MongoTemplate.updateMulti() — 100% reliable, no annotation magic.
+     */
+    private void revokeAllPending(String email, Otp.OtpType type) {
+        Query q = Query.query(
+                Criteria.where("email").is(email)
+                        .and("type").is(type)
+                        .and("status").is(Otp.OtpStatus.PENDING));
+        Update u = new Update().set("status", Otp.OtpStatus.REVOKED);
+        mongoTemplate.updateMulti(q, u, Otp.class);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private void revokeOtp(Otp otp, Otp.OtpStatus status) {
+    private void markStatus(Otp otp, Otp.OtpStatus status) {
         otp.setStatus(status);
         otpRepository.save(otp);
     }
 
-    private void audit(String email, Otp.OtpType type,
-                       String event, String detail) {
-        // Structured security audit log — queryable in log aggregation tools
+    private void audit(String email, Otp.OtpType type, String event, String detail) {
         log.info("[SECURITY_AUDIT] event={} type={} email={} detail=\"{}\"",
                 event, type, email, detail);
     }
@@ -207,11 +217,9 @@ public class OtpService {
             ServletRequestAttributes attrs =
                     (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
             HttpServletRequest req = attrs.getRequest();
-            // Check proxy headers first (Render sits behind a proxy)
             String forwarded = req.getHeader("X-Forwarded-For");
-            if (forwarded != null && !forwarded.isBlank()) {
+            if (forwarded != null && !forwarded.isBlank())
                 return forwarded.split(",")[0].trim();
-            }
             return req.getRemoteAddr();
         } catch (Exception e) {
             return "unknown";
@@ -223,14 +231,12 @@ public class OtpService {
             ServletRequestAttributes attrs =
                     (ServletRequestAttributes) RequestContextHolder.currentRequestAttributes();
             String ua = attrs.getRequest().getHeader("User-Agent");
-            // Truncate — we don't need the full UA string in DB
             return ua != null && ua.length() > 200 ? ua.substring(0, 200) : ua;
         } catch (Exception e) {
             return "unknown";
         }
     }
 
-    // ── Email HTML — unchanged from your existing implementation ──────────────
     private String buildEmailHtml(String code, String actionLabel) {
         String digits = code.chars()
                 .mapToObj(c ->
@@ -245,11 +251,9 @@ public class OtpService {
             "<svg width='36' height='43' viewBox='0 0 100 120' fill='none' xmlns='http://www.w3.org/2000/svg'>"
             + "<path d='M50 15L15 30V65C15 85 50 105 50 105C50 105 85 85 85 65V30L50 15Z' fill='#0D9488'/>"
             + "<path d='M35 68L48 50L58 60L75 35' stroke='#5EEAD4' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/>"
-            + "<circle cx='75' cy='35' r='7' fill='white'/>"
-            + "</svg>";
+            + "<circle cx='75' cy='35' r='7' fill='white'/></svg>";
 
-        return "<!DOCTYPE html>"
-            + "<html lang='en'><head><meta charset='UTF-8'>"
+        return "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>"
             + "<meta name='viewport' content='width=device-width,initial-scale=1'></head>"
             + "<body style='font-family:Arial,sans-serif;background:#070b14;color:#e2e8f0;margin:0;padding:0'>"
             + "<table width='100%' cellpadding='0' cellspacing='0'><tr><td align='center' style='padding:40px 16px'>"
@@ -258,8 +262,7 @@ public class OtpService {
             + "<table cellpadding='0' cellspacing='0'><tr>"
             + "<td style='padding-right:12px;vertical-align:middle'>" + shieldSvg + "</td>"
             + "<td style='vertical-align:middle'>"
-            + "<div style='font-size:26px;font-weight:700;color:white;letter-spacing:-0.5px;font-family:Arial,sans-serif'>"
-            + "Market<span style='color:#5EEAD4;font-weight:400'>Saga</span></div>"
+            + "<div style='font-size:26px;font-weight:700;color:white'>Market<span style='color:#5EEAD4;font-weight:400'>Saga</span></div>"
             + "<div style='font-size:7px;font-weight:800;color:#475569;letter-spacing:3px;margin-top:2px'>TRADE WITH CLARITY</div>"
             + "</td></tr></table></td></tr>"
             + "<tr><td style='background:#0d1117;border:1px solid #1e2433;border-radius:16px;padding:36px'>"
@@ -270,31 +273,23 @@ public class OtpService {
             + "font-weight:800;letter-spacing:2px;display:inline-block'>🔐 VERIFICATION CODE</div>"
             + "</td></tr>"
             + "<tr><td align='center' style='padding:12px 0 6px'>"
-            + "<div style='font-size:22px;font-weight:700;color:#e2e8f0'>Enter this code to "
-            + actionLabel + "</div>"
+            + "<div style='font-size:22px;font-weight:700;color:#e2e8f0'>Enter this code to " + actionLabel + "</div>"
             + "</td></tr>"
             + "<tr><td align='center' style='padding-bottom:28px'>"
-            + "<div style='font-size:14px;color:#475569;line-height:1.6'>"
-            + "Valid for <strong style='color:#94a3b8'>10 minutes</strong>. Do not share this code with anyone.</div>"
+            + "<div style='font-size:14px;color:#475569'>Valid for <strong style='color:#94a3b8'>10 minutes</strong>. Do not share.</div>"
             + "</td></tr>"
             + "<tr><td align='center' style='padding-bottom:28px'>"
             + "<table cellpadding='0' cellspacing='0'><tr>" + digits + "</tr></table>"
             + "</td></tr>"
             + "<tr><td style='border-top:1px solid #1e2433;padding-top:24px'></td></tr>"
             + "<tr><td style='padding-top:16px'>"
-            + "<table width='100%' style='background:rgba(245,158,11,.06);border-left:3px solid #f59e0b;"
-            + "border-radius:0 8px 8px 0' cellpadding='0' cellspacing='0'>"
-            + "<tr><td style='padding:12px 16px'>"
-            + "<div style='font-size:12px;color:#fbbf24;line-height:1.6'>"
-            + "<strong>Security notice:</strong> Market Saga will never call or message you to ask "
-            + "for this code. If you did not request this, please ignore this email.</div>"
-            + "</td></tr></table></td></tr>"
+            + "<table width='100%' style='background:rgba(245,158,11,.06);border-left:3px solid #f59e0b;border-radius:0 8px 8px 0'>"
+            + "<tr><td style='padding:12px 16px'><div style='font-size:12px;color:#fbbf24'>"
+            + "<strong>Security notice:</strong> Market Saga will never ask for this code. If you did not request this, ignore this email."
+            + "</div></td></tr></table></td></tr>"
             + "</table></td></tr>"
             + "<tr><td align='center' style='padding-top:24px'>"
-            + "<p style='font-size:11px;color:#334155;font-family:Arial'>"
-            + "Sent from <a href='https://marketsaga.site' style='color:#0D9488;text-decoration:none'>marketsaga.site</a>"
-            + "</p></td></tr>"
-            + "</table></td></tr></table>"
-            + "</body></html>";
+            + "<p style='font-size:11px;color:#334155'>Sent from <a href='https://marketsaga.site' style='color:#0D9488'>marketsaga.site</a></p>"
+            + "</td></tr></table></td></tr></table></body></html>";
     }
 }
